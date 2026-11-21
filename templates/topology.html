@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+
+{% block title %}Network Topology - Network Failover Framework{% endblock %}
+
+{% block content %}
+<div class="row g-3 mb-4">
+    <div class="col-12 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h3 class="fw-bold mb-0">Virtual Network Topology & Route Inspection</h3>
+            <p class="text-secondary small mb-0">Interactive visualization of Linux network namespaces, veth interfaces, and live routing priority</p>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <button class="btn btn-outline-primary" onclick="loadTopologyDetails()">
+                <i class="fa-solid fa-arrows-rotate me-1"></i> Refresh Live State
+            </button>
+            <button class="btn btn-outline-danger" onclick="teardownTopology()">
+                <i class="fa-solid fa-trash me-1"></i> Teardown
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Interactive SVG Diagram Container -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
+                <h6 class="fw-bold mb-0 text-dark">
+                    <i class="fa-solid fa-network-wired text-primary me-2"></i>Live Namespace & Dual-Path Routing Map
+                </h6>
+                <div class="d-flex gap-3 small">
+                    <span class="d-flex align-items-center gap-1"><span class="badge bg-success p-1">&nbsp;</span> Active Path</span>
+                    <span class="d-flex align-items-center gap-1"><span class="badge bg-warning p-1">&nbsp;</span> Standby Path</span>
+                    <span class="d-flex align-items-center gap-1"><span class="badge bg-danger p-1">&nbsp;</span> Disrupted Link</span>
+                </div>
+            </div>
+            <div class="card-body p-4 bg-light text-center">
+                <svg id="topology-svg" viewBox="0 0 900 360" style="width: 100%; max-height: 400px;">
+                    <!-- Connection Lines -->
+                    <!-- Primary Path: Client to Primary Router -->
+                    <line id="link-c-p" x1="160" y1="180" x2="450" y2="80" stroke="#10b981" stroke-width="4" stroke-linecap="round" />
+                    <!-- Primary Path: Primary Router to Server -->
+                    <line id="link-p-s" x1="450" y1="80" x2="740" y2="180" stroke="#10b981" stroke-width="4" stroke-linecap="round" />
+                    
+                    <!-- Backup Path: Client to Backup Router -->
+                    <line id="link-c-b" x1="160" y1="180" x2="450" y2="280" stroke="#cbd5e1" stroke-width="4" stroke-linecap="round" stroke-dasharray="6 4" />
+                    <!-- Backup Path: Backup Router to Server -->
+                    <line id="link-b-s" x1="450" y1="280" x2="740" y2="180" stroke="#cbd5e1" stroke-width="4" stroke-linecap="round" stroke-dasharray="6 4" />
+
+                    <!-- Node 1: Client Host (ns_client) -->
+                    <g transform="translate(70, 130)">
+                        <rect width="180" height="100" rx="10" fill="#ffffff" stroke="#2563eb" stroke-width="3" filter="drop-shadow(0 2px 5px rgba(0,0,0,0.1))"/>
+                        <text x="90" y="30" text-anchor="middle" font-size="14" font-weight="bold" fill="#0f172a">Client Host</text>
+                        <text x="90" y="48" text-anchor="middle" font-size="11" fill="#64748b">ns_client</text>
+                        <text x="90" y="70" text-anchor="middle" font-size="10" fill="#2563eb">veth_c_p: 10.0.1.2</text>
+                        <text x="90" y="86" text-anchor="middle" font-size="10" fill="#f59e0b">veth_c_b: 10.0.2.2</text>
+                    </g>
+
+                    <!-- Node 2: Primary Router (ns_primary) -->
+                    <g transform="translate(360, 30)">
+                        <rect id="node-primary-rect" width="180" height="100" rx="10" fill="#ffffff" stroke="#10b981" stroke-width="3" filter="drop-shadow(0 2px 5px rgba(0,0,0,0.1))"/>
+                        <text x="90" y="30" text-anchor="middle" font-size="14" font-weight="bold" fill="#0f172a">Primary Router</text>
+                        <text x="90" y="48" text-anchor="middle" font-size="11" fill="#64748b">ns_primary (Metric 100)</text>
+                        <text x="90" y="70" text-anchor="middle" font-size="10" fill="#10b981">In: 10.0.1.1 (veth_p_c)</text>
+                        <text x="90" y="86" text-anchor="middle" font-size="10" fill="#10b981">Out: 10.0.3.1 (veth_p_s)</text>
+                    </g>
+
+                    <!-- Node 3: Backup Router (ns_backup) -->
+                    <g transform="translate(360, 230)">
+                        <rect id="node-backup-rect" width="180" height="100" rx="10" fill="#ffffff" stroke="#f59e0b" stroke-width="3" filter="drop-shadow(0 2px 5px rgba(0,0,0,0.1))"/>
+                        <text x="90" y="30" text-anchor="middle" font-size="14" font-weight="bold" fill="#0f172a">Backup Router</text>
+                        <text x="90" y="48" text-anchor="middle" font-size="11" fill="#64748b">ns_backup (Metric 200)</text>
+                        <text x="90" y="70" text-anchor="middle" font-size="10" fill="#f59e0b">In: 10.0.2.1 (veth_b_c)</text>
+                        <text x="90" y="86" text-anchor="middle" font-size="10" fill="#f59e0b">Out: 10.0.4.1 (veth_b_s)</text>
+                    </g>
+
+                    <!-- Node 4: Destination Server (ns_server) -->
+                    <g transform="translate(650, 130)">
+                        <rect width="180" height="100" rx="10" fill="#ffffff" stroke="#0284c7" stroke-width="3" filter="drop-shadow(0 2px 5px rgba(0,0,0,0.1))"/>
+                        <text x="90" y="30" text-anchor="middle" font-size="14" font-weight="bold" fill="#0f172a">Destination Server</text>
+                        <text x="90" y="48" text-anchor="middle" font-size="11" fill="#64748b">ns_server</text>
+                        <text x="90" y="70" text-anchor="middle" font-size="10" fill="#0284c7">Target IP: 10.50.0.1</text>
+                        <text x="90" y="86" text-anchor="middle" font-size="10" fill="#64748b">Pri: 10.0.3.2 | Bak: 10.0.4.2</text>
+                    </g>
+                </svg>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Interface Status & Routes Section -->
+<div class="row g-4">
+    <!-- Interfaces Table -->
+    <div class="col-lg-7">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-white border-bottom py-3">
+                <h6 class="fw-bold mb-0 text-dark">
+                    <i class="fa-solid fa-ethernet text-primary me-2"></i>Interface Operstate & Statistics
+                </h6>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0" id="interfaces-table">
+                        <thead>
+                            <tr>
+                                <th>Namespace</th>
+                                <th>Device</th>
+                                <th>IP Address</th>
+                                <th>Operstate</th>
+                                <th>Role</th>
+                            </tr>
+                        </thead>
+                        <tbody id="interfaces-tbody">
+                            <tr><td colspan="5" class="text-center py-3">Loading interface states...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Routing Table Inspection -->
+    <div class="col-lg-5">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-white border-bottom py-3">
+                <h6 class="fw-bold mb-0 text-dark">
+                    <i class="fa-solid fa-route text-primary me-2"></i>Kernel Route Table (ns_client)
+                </h6>
+            </div>
+            <div class="card-body">
+                <p class="text-secondary small mb-2">Live output from <code>ip netns exec ns_client ip route show</code>:</p>
+                <div class="terminal-box" id="client-routes-box">
+                    Loading routing table...
+                </div>
+                <div class="mt-3 small text-secondary">
+                    <i class="fa-solid fa-circle-info text-primary me-1"></i>
+                    <strong>Routing Principle:</strong> The Linux kernel directs packets using the lowest metric route. During failover, the backup path is dynamically promoted to metric 50, taking priority over primary's metric 100.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+async function loadTopologyDetails() {
+    try {
+        const res = await fetch('/api/status');
+        if (!res.ok) return;
+        const data = await res.json();
+        const top = data.topology || {};
+        const ifaces = top.interfaces || {};
+        const activePath = top.active_path || 'UNKNOWN';
+
+        // 1. Update SVG Link styles
+        const linkCP = document.getElementById('link-c-p');
+        const linkPS = document.getElementById('link-p-s');
+        const linkCB = document.getElementById('link-c-b');
+        const linkBS = document.getElementById('link-b-s');
+
+        const priUp = top.primary_path_status === 'UP';
+        const bakUp = top.backup_path_status === 'UP';
+
+        if (activePath === 'PRIMARY') {
+            linkCP.setAttribute('stroke', '#10b981');
+            linkCP.setAttribute('stroke-width', '5');
+            linkCP.classList.add('active-link-line');
+
+            linkPS.setAttribute('stroke', '#10b981');
+            linkPS.setAttribute('stroke-width', '5');
+            linkPS.classList.add('active-link-line');
+
+            linkCB.setAttribute('stroke', bakUp ? '#f59e0b' : '#ef4444');
+            linkCB.setAttribute('stroke-width', '3');
+            linkCB.classList.remove('active-link-line');
+
+            linkBS.setAttribute('stroke', bakUp ? '#f59e0b' : '#ef4444');
+            linkBS.setAttribute('stroke-width', '3');
+            linkBS.classList.remove('active-link-line');
+        } else if (activePath === 'BACKUP') {
+            linkCB.setAttribute('stroke', '#10b981');
+            linkCB.setAttribute('stroke-width', '5');
+            linkCB.classList.add('active-link-line');
+
+            linkBS.setAttribute('stroke', '#10b981');
+            linkBS.setAttribute('stroke-width', '5');
+            linkBS.classList.add('active-link-line');
+
+            linkCP.setAttribute('stroke', priUp ? '#f59e0b' : '#ef4444');
+            linkCP.setAttribute('stroke-width', '3');
+            linkCP.classList.remove('active-link-line');
+
+            linkPS.setAttribute('stroke', priUp ? '#f59e0b' : '#ef4444');
+            linkPS.setAttribute('stroke-width', '3');
+            linkPS.classList.remove('active-link-line');
+        } else {
+            // Disrupted
+            linkCP.setAttribute('stroke', '#ef4444');
+            linkPS.setAttribute('stroke', '#ef4444');
+            linkCB.setAttribute('stroke', '#ef4444');
+            linkBS.setAttribute('stroke', '#ef4444');
+        }
+
+        // 2. Populate Interfaces Table
+        const ifaceList = [
+            { ns: 'ns_client', dev: 'veth_c_p', ip: '10.0.1.2/24', role: 'Client Primary Egress', key: 'client_pri' },
+            { ns: 'ns_client', dev: 'veth_c_b', ip: '10.0.2.2/24', role: 'Client Backup Egress', key: 'client_bak' },
+            { ns: 'ns_primary', dev: 'veth_p_c', ip: '10.0.1.1/24', role: 'Primary Gateway (Client-facing)', key: 'primary_cli' },
+            { ns: 'ns_primary', dev: 'veth_p_s', ip: '10.0.3.1/24', role: 'Primary Egress (Server-facing)', key: 'primary_srv' },
+            { ns: 'ns_backup', dev: 'veth_b_c', ip: '10.0.2.1/24', role: 'Backup Gateway (Client-facing)', key: 'backup_cli' },
+            { ns: 'ns_backup', dev: 'veth_b_s', ip: '10.0.4.1/24', role: 'Backup Egress (Server-facing)', key: 'backup_srv' },
+            { ns: 'ns_server', dev: 'veth_s_p', ip: '10.0.3.2/24', role: 'Server Primary Ingress', key: 'server_pri' },
+            { ns: 'ns_server', dev: 'veth_s_b', ip: '10.0.4.2/24', role: 'Server Backup Ingress', key: 'server_bak' }
+        ];
+
+        const tbody = document.getElementById('interfaces-tbody');
+        tbody.innerHTML = ifaceList.map(item => {
+            const info = ifaces[item.key] || {};
+            const state = info.operstate || (info.exists ? 'UP' : 'DOWN');
+            const badgeClass = state === 'UP' ? 'bg-success' : 'bg-danger';
+            return `
+                <tr>
+                    <td><code>${item.ns}</code></td>
+                    <td><strong>${item.dev}</strong></td>
+                    <td>${item.ip}</td>
+                    <td><span class="badge ${badgeClass}">${state}</span></td>
+                    <td class="text-secondary small">${item.role}</td>
+                </tr>
+            `;
+        }).join('');
+
+        // 3. Routing Table Info
+        const rInfo = top.route_info || {};
+        document.getElementById('client-routes-box').innerText = 
+            `Destination: 10.50.0.1\n` +
+            `Active Interface: ${rInfo.dev || 'none'}\n` +
+            `Active Gateway:   ${rInfo.gateway || 'none'}\n` +
+            `Active Path:      ${rInfo.active_path || 'UNKNOWN'}\n\n` +
+            `Route Cache Detail:\n${rInfo.raw || 'No route cache output available.'}`;
+
+    } catch (e) {
+        console.error('Topology load error:', e);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadTopologyDetails();
+    setInterval(loadTopologyDetails, 1500);
+});
+</script>
+{% endblock %}

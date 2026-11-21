@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Network Failover & Recovery Testing Framework{% endblock %}</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+    <!-- Custom CSS -->
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top shadow-sm">
+        <div class="container-fluid px-4">
+            <a class="navbar-brand d-flex align-items-center gap-2" href="{{ url_for('page_dashboard') }}">
+                <i class="fa-solid fa-network-wired text-primary"></i>
+                <span>NetResilience <small class="text-secondary fs-6 fw-normal">| Failover & Recovery</small></span>
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarContent">
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'page_dashboard' %}active{% endif %}" href="{{ url_for('page_dashboard') }}">
+                            <i class="fa-solid fa-gauge-high me-1"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'page_topology' %}active{% endif %}" href="{{ url_for('page_topology') }}">
+                            <i class="fa-solid fa-diagram-project me-1"></i> Topology
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'page_simulation' %}active{% endif %}" href="{{ url_for('page_simulation') }}">
+                            <i class="fa-solid fa-triangle-exclamation me-1"></i> Simulation
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'page_monitoring' %}active{% endif %}" href="{{ url_for('page_monitoring') }}">
+                            <i class="fa-solid fa-heart-pulse me-1"></i> Monitoring
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'page_analysis' %}active{% endif %}" href="{{ url_for('page_analysis') }}">
+                            <i class="fa-solid fa-chart-line me-1"></i> Analysis
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'page_history' %}active{% endif %}" href="{{ url_for('page_history') }}">
+                            <i class="fa-solid fa-clock-rotate-left me-1"></i> History
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'page_reports' %}active{% endif %}" href="{{ url_for('page_reports') }}">
+                            <i class="fa-solid fa-file-csv me-1"></i> Reports
+                        </a>
+                    </li>
+                </ul>
+
+                <!-- Live Telemetry Badges -->
+                <div class="d-flex align-items-center gap-2">
+                    <span class="text-light small text-uppercase fw-semibold me-1">Path:</span>
+                    <span id="nav-active-path" class="status-pill idle">POLLING...</span>
+                    <span id="nav-net-status" class="status-pill idle">INITIALIZING</span>
+                    <span id="nav-session-status" class="status-pill idle">IDLE</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="container-fluid px-4 py-4 flex-grow-1">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="position-fixed bottom-0 end-0 p-3" style="z-index: 9999;"></div>
+
+    <!-- Academic Footer -->
+    <footer>
+        <div class="container-fluid px-4 text-center">
+            <span>Automated Network Failover and Recovery Testing Framework &copy; Academic Network Engineering Prototype</span>
+            <div class="text-secondary small mt-1">Linux Network Namespaces &bull; iproute2 &bull; Dual-Path Routing &bull; Python Flask Backend</div>
+        </div>
+    </footer>
+
+    <!-- Bootstrap 5 Bundle JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Main JS -->
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+
+{% block title %}Experiment History - Network Failover Framework{% endblock %}
+
+{% block content %}
+<div class="row g-3 mb-4">
+    <div class="col-12 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h3 class="fw-bold mb-0">Experiment Session History</h3>
+            <p class="text-secondary small mb-0">Audit log of all executed experiments, failure scenarios, and quantitative recovery metrics</p>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <a href="{{ url_for('download_all_sessions_csv') }}" class="btn btn-outline-primary">
+                <i class="fa-solid fa-file-csv me-1"></i> Export All Sessions CSV
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- History Table -->
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white border-bottom py-3">
+        <h6 class="fw-bold mb-0 text-dark">
+            <i class="fa-solid fa-list-check text-primary me-2"></i>Recorded Experiment Sessions ({{ sessions | length }})
+        </h6>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Session Name</th>
+                        <th>Failure Scenario</th>
+                        <th>Status</th>
+                        <th>Detection Time</th>
+                        <th>Recovery Time</th>
+                        <th>Packet Loss</th>
+                        <th>Availability</th>
+                        <th>Date & Time</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if sessions %}
+                        {% for s in sessions %}
+                        <tr>
+                            <td><strong>#{{ s.id }}</strong></td>
+                            <td class="fw-semibold">{{ s.session_name }}</td>
+                            <td><code>{{ s.scenario_name }}</code></td>
+                            <td>
+                                {% if s.status == 'COMPLETED' %}
+                                    <span class="badge bg-success">COMPLETED</span>
+                                {% elif s.status == 'RUNNING' %}
+                                    <span class="badge bg-primary animate-pulse">RUNNING</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">{{ s.status }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if s.failure_detection_time_ms %}
+                                    <span class="text-warning fw-semibold">{{ s.failure_detection_time_ms }} ms</span>
+                                {% else %}
+                                    &mdash;
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if s.failover_recovery_time_ms %}
+                                    <span class="text-success fw-bold">{{ s.failover_recovery_time_ms }} ms</span>
+                                {% else %}
+                                    &mdash;
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge bg-light text-dark border">
+                                    {{ s.packet_loss_percent or 0.0 }}%
+                                </span>
+                            </td>
+                            <td>
+                                <span class="badge bg-light text-primary border">
+                                    {{ s.availability_percent or 100.0 }}%
+                                </span>
+                            </td>
+                            <td class="text-secondary small">{{ s.start_time | round(0) }}</td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn btn-outline-primary" onclick="viewSessionDetails({{ s.id }})">
+                                        <i class="fa-solid fa-eye me-1"></i> Inspect
+                                    </button>
+                                    <a href="/download/session/{{ s.id }}/probes.csv" class="btn btn-outline-secondary" title="Download Probes CSV">
+                                        <i class="fa-solid fa-download"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="10" class="text-center py-4 text-muted">
+                                No sessions recorded yet. Launch a session from the Dashboard to record data.
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Session Drill-Down Inspector -->
+<div class="modal fade" id="sessionDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold" id="detail-modal-title">Session Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3 mb-3" id="detail-metrics-summary">
+                    <!-- Populated dynamically -->
+                </div>
+
+                <h6 class="fw-bold border-bottom pb-2">Lifecycle Events</h6>
+                <div id="detail-events-list" class="small mb-3">
+                    Loading events...
+                </div>
+
+                <h6 class="fw-bold border-bottom pb-2">Probe History (Sample)</h6>
+                <div class="table-responsive" style="max-height: 250px;">
+                    <table class="table table-sm table-striped">
+                        <thead>
+                            <tr>
+                                <th># Seq</th>
+                                <th>Status</th>
+                                <th>RTT</th>
+                                <th>Path</th>
+                                <th>Interface</th>
+                            </tr>
+                        </thead>
+                        <tbody id="detail-probes-tbody">
+                            <tr><td colspan="5" class="text-center">Loading probes...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <a id="detail-download-btn" href="#" class="btn btn-outline-primary btn-sm">
+                    <i class="fa-solid fa-file-csv me-1"></i> Download Probes CSV
+                </a>
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+async function viewSessionDetails(sessionId) {
+    try {
+        const res = await fetch(`/api/session/${sessionId}`);
+        if (!res.ok) {
+            showToast('Failed to load session details', 'danger');
+            return;
+        }
+        const data = await res.json();
+        const s = data.session || {};
+        const m = data.metrics || {};
+        const events = data.events || [];
+        const probes = data.probes || [];
+
+        document.getElementById('detail-modal-title').innerText = `Session #${s.id}: ${s.session_name} (${s.scenario_name})`;
+        document.getElementById('detail-download-btn').href = `/download/session/${s.id}/probes.csv`;
+
+        // Metrics Summary
+        document.getElementById('detail-metrics-summary').innerHTML = `
+            <div class="col-md-3">
+                <div class="p-2 border rounded bg-light text-center">
+                    <small class="text-muted text-uppercase d-block">Detection</small>
+                    <strong class="text-warning fs-5">${m.failure_detection_time_ms ? m.failure_detection_time_ms + ' ms' : 'N/A'}</strong>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="p-2 border rounded bg-light text-center">
+                    <small class="text-muted text-muted d-block">Recovery</small>
+                    <strong class="text-success fs-5">${m.failover_recovery_time_ms ? m.failover_recovery_time_ms + ' ms' : 'N/A'}</strong>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="p-2 border rounded bg-light text-center">
+                    <small class="text-muted text-uppercase d-block">Packet Loss</small>
+                    <strong class="text-danger fs-5">${m.packet_loss_percent || 0.0}%</strong>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="p-2 border rounded bg-light text-center">
+                    <small class="text-muted text-uppercase d-block">Availability</small>
+                    <strong class="text-primary fs-5">${m.availability_percent || 100.0}%</strong>
+                </div>
+            </div>
+        `;
+
+        // Events List
+        const eventsList = document.getElementById('detail-events-list');
+        if (events.length > 0) {
+            eventsList.innerHTML = `<ul class="list-group list-group-flush">` + 
+                events.map(e => `
+                    <li class="list-group-item d-flex justify-content-between align-items-center py-1">
+                        <div>
+                            <strong>${e.event_type}</strong>
+                            <span class="text-muted ms-2">${e.scenario || ''}</span>
+                        </div>
+                        <span class="badge bg-secondary">${new Date(e.timestamp * 1000).toLocaleTimeString()}</span>
+                    </li>
+                `).join('') + `</ul>`;
+        } else {
+            eventsList.innerHTML = `<p class="text-muted">No explicit lifecycle events recorded for this session.</p>`;
+        }
+
+        // Probes Table
+        const probesTbody = document.getElementById('detail-probes-tbody');
+        if (probes.length > 0) {
+            probesTbody.innerHTML = probes.slice(0, 50).map(p => `
+                <tr>
+                    <td>#${p.sequence_num}</td>
+                    <td>${p.success ? '<span class="badge bg-success">OK</span>' : '<span class="badge bg-danger">TIMEOUT</span>'}</td>
+                    <td>${p.rtt_ms ? p.rtt_ms.toFixed(3) + ' ms' : '&mdash;'}</td>
+                    <td><span class="badge ${p.active_path === 'PRIMARY' ? 'bg-success' : 'bg-warning text-dark'}">${p.active_path}</span></td>
+                    <td><code>${p.active_interface || 'veth'}</code></td>
+                </tr>
+            `).join('');
+        } else {
+            probesTbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">No probes captured.</td></tr>`;
+        }
+
+        const modal = new bootstrap.Modal(document.getElementById('sessionDetailModal'));
+        modal.show();
+
+    } catch (e) {
+        showToast(`Error: ${e}`, 'danger');
+    }
+}
+</script>
+{% endblock %}

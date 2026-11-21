@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+
+{% block title %}Failure Simulation - Network Failover Framework{% endblock %}
+
+{% block content %}
+<div class="row g-3 mb-4">
+    <div class="col-12 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h3 class="fw-bold mb-0">Controlled Failure Simulation Console</h3>
+            <p class="text-secondary small mb-0">Inject realistic network disruptions into the isolated virtual environment to benchmark failover response</p>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <button class="btn btn-outline-success" onclick="restoreActiveFailure()">
+                <i class="fa-solid fa-heart-pulse me-1"></i> Restore Network Health
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Live Active Failure Alert Banner (hidden if no failure) -->
+<div id="active-failure-banner" class="alert alert-danger shadow-sm d-none mb-4" role="alert">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h5 class="alert-heading fw-bold mb-1">
+                <i class="fa-solid fa-triangle-exclamation me-2 animate-bounce"></i>
+                Active Disruption: <span id="banner-scenario-name">Primary Link Failure</span>
+            </h5>
+            <div class="small">
+                Disruption in progress for <strong id="banner-elapsed">0.0</strong> seconds &bull; 
+                Affected: <span id="banner-affected">Client Interface</span>
+            </div>
+        </div>
+        <button class="btn btn-danger btn-sm px-3" onclick="restoreActiveFailure()">
+            <i class="fa-solid fa-wrench me-1"></i> Manually Restore Now
+        </button>
+    </div>
+</div>
+
+<!-- 5 Scenario Cards Grid -->
+<div class="row g-4 mb-4">
+    {% for sc_id, sc in scenarios.items() %}
+    <div class="col-md-6 col-lg-4">
+        <div class="card shadow-sm border-0 h-100 scenario-card" id="card-{{ sc_id }}">
+            <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
+                <h6 class="fw-bold mb-0 text-dark">{{ sc.name }}</h6>
+                <span class="badge bg-secondary">Scenario #{{ loop.index }}</span>
+            </div>
+            <div class="card-body d-flex flex-column">
+                <p class="text-secondary small mb-3 flex-grow-1">{{ sc.description }}</p>
+
+                <div class="mb-3">
+                    <span class="text-muted small fw-semibold text-uppercase d-block mb-1">Affected Component:</span>
+                    <span class="badge bg-light text-dark border">{{ sc.affected_component }}</span>
+                </div>
+
+                <div class="mb-3">
+                    <span class="text-muted small fw-semibold text-uppercase d-block mb-1">Linux Command:</span>
+                    <code class="d-block p-2 bg-light rounded text-danger small text-break">{{ sc.linux_command }}</code>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small fw-semibold text-muted text-uppercase mb-1">Auto-Recovery Duration:</label>
+                    <select class="form-select form-select-sm" id="duration-{{ sc_id }}">
+                        <option value="0">Manual / Indefinite</option>
+                        <option value="3">3 Seconds</option>
+                        <option value="5" {% if sc_id == 'temporary_interruption' %}selected{% endif %}>5 Seconds</option>
+                        <option value="10">10 Seconds</option>
+                        <option value="15">15 Seconds</option>
+                    </select>
+                </div>
+
+                <div class="d-grid gap-2 mt-auto">
+                    <button class="btn btn-outline-danger btn-sm py-2 fw-semibold" onclick="triggerScenario('{{ sc_id }}')">
+                        <i class="fa-solid fa-bolt me-1"></i> Inject {{ sc.name }}
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Linux Command Reference & Educational Principles -->
+<div class="row g-4">
+    <div class="col-12">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white border-bottom py-3">
+                <h6 class="fw-bold mb-0 text-dark">
+                    <i class="fa-solid fa-terminal text-primary me-2"></i>Academic Networking Command Reference & Execution Mechanism
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <h6 class="fw-bold text-dark">Why Real Linux Kernel Namespaces?</h6>
+                        <p class="text-secondary small">
+                            Unlike simulations that simply toggle HTML variables, this framework operates directly on the Linux network stack using isolated network namespaces (<code>ip netns</code>). Each namespace maintains its own independent routing tables, firewall rules, and virtual Ethernet network devices.
+                        </p>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="fw-bold text-dark">Threshold-Based Failure Detection</h6>
+                        <p class="text-secondary small">
+                            In enterprise production networks, a single lost ICMP probe or momentary jitter must not trigger a full route reconvergence. The framework enforces a configurable consecutive failure threshold (default: 3 missed probes) before raising <code>FAILURE_DETECTED</code> and promoting the backup route.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+async function triggerScenario(scenarioId) {
+    const duration = parseFloat(document.getElementById(`duration-${scenarioId}`).value) || 0.0;
+    try {
+        showToast(`Injecting scenario: ${scenarioId}...`, 'warning');
+        const res = await fetch('/api/failure/trigger', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ scenario_id: scenarioId, duration: duration })
+        });
+        const json = await res.json();
+        if (json.success) {
+            showToast(`Failure injected! Simulation active.`, 'danger');
+            pollSimulationStatus();
+        } else {
+            showToast(`Error: ${json.error}`, 'danger');
+        }
+    } catch (e) {
+        showToast(`Request failed: ${e}`, 'danger');
+    }
+}
+
+async function restoreActiveFailure() {
+    try {
+        showToast('Restoring network failure...', 'info');
+        const res = await fetch('/api/failure/restore', { method: 'POST' });
+        const json = await res.json();
+        if (json.success) {
+            showToast('Network disruption successfully restored!', 'success');
+            pollSimulationStatus();
+        } else {
+            showToast(`Error: ${json.error || json.message}`, 'danger');
+        }
+    } catch (e) {
+        showToast(`Request failed: ${e}`, 'danger');
+    }
+}
+
+async function pollSimulationStatus() {
+    try {
+        const res = await fetch('/api/status');
+        if (!res.ok) return;
+        const data = await res.json();
+        const sim = data.simulation || {};
+
+        const banner = document.getElementById('active-failure-banner');
+        if (sim.is_active) {
+            banner.classList.remove('d-none');
+            const details = sim.scenario_details || {};
+            document.getElementById('banner-scenario-name').innerText = details.name || sim.active_scenario;
+            document.getElementById('banner-elapsed').innerText = (sim.elapsed_seconds || 0).toFixed(1);
+            document.getElementById('banner-affected').innerText = details.affected_component || 'Virtual Link';
+        } else {
+            banner.classList.add('d-none');
+        }
+    } catch (e) {
+        console.error('Simulation poll error:', e);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    pollSimulationStatus();
+    setInterval(pollSimulationStatus, 1000);
+});
+</script>
+{% endblock %}

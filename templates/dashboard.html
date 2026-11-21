@@ -1,0 +1,405 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Network Failover Framework{% endblock %}
+
+{% block content %}
+<div class="row g-3 mb-4">
+    <!-- Header title & quick controls -->
+    <div class="col-12 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h3 class="fw-bold mb-0">Network Resilience & Failover Dashboard</h3>
+            <p class="text-secondary small mb-0">Real-time telemetry, routing path state, and experiment controls</p>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newSessionModal">
+                <i class="fa-solid fa-play me-1"></i> New Session
+            </button>
+            <button class="btn btn-outline-danger" id="btn-stop-session" onclick="stopActiveSession()" disabled>
+                <i class="fa-solid fa-stop me-1"></i> End Session
+            </button>
+            <button class="btn btn-outline-secondary" onclick="setupTopology()">
+                <i class="fa-solid fa-arrows-rotate me-1"></i> Reset Topology
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- 5 Metric Cards -->
+<div class="row g-3 mb-4">
+    <!-- Card 1: Network Status -->
+    <div class="col-md-6 col-xl-2 col-sm-6">
+        <div class="metric-card h-100">
+            <div class="metric-label">Network Status</div>
+            <div class="metric-value text-success" id="card-net-status">ONLINE</div>
+            <div class="metric-sub" id="card-target-ip">Target: 10.50.0.1</div>
+        </div>
+    </div>
+
+    <!-- Card 2: Active Routing Path -->
+    <div class="col-md-6 col-xl-3 col-sm-6">
+        <div class="metric-card h-100">
+            <div class="metric-label">Active Route</div>
+            <div class="metric-value" id="card-active-path">
+                <span class="badge bg-success">PRIMARY</span>
+            </div>
+            <div class="metric-sub" id="card-active-gateway">via 10.0.1.1 (veth_c_p)</div>
+        </div>
+    </div>
+
+    <!-- Card 3: Primary Path State -->
+    <div class="col-md-4 col-xl-2 col-sm-4">
+        <div class="metric-card h-100">
+            <div class="metric-label">Primary Path</div>
+            <div class="metric-value" id="card-primary-status">UP</div>
+            <div class="metric-sub">Metric: 100</div>
+        </div>
+    </div>
+
+    <!-- Card 4: Backup Path State -->
+    <div class="col-md-4 col-xl-2 col-sm-4">
+        <div class="metric-card h-100">
+            <div class="metric-label">Backup Path</div>
+            <div class="metric-value" id="card-backup-status">UP</div>
+            <div class="metric-sub">Metric: 200 / Standby</div>
+        </div>
+    </div>
+
+    <!-- Card 5: Historical Experiments -->
+    <div class="col-md-4 col-xl-3 col-sm-4">
+        <div class="metric-card h-100">
+            <div class="metric-label">Experiments Completed</div>
+            <div class="metric-value">{{ stats.total_sessions }}</div>
+            <div class="metric-sub">
+                <span class="text-success fw-bold">{{ stats.successful_failovers }} Success</span> &bull; 
+                <span class="text-danger fw-bold">{{ stats.failed_failovers }} Failed</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Main Row: Chart & Controller Console -->
+<div class="row g-4 mb-4">
+    <!-- Live Ping Chart -->
+    <div class="col-lg-8">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
+                <h6 class="fw-bold mb-0 text-dark">
+                    <i class="fa-solid fa-chart-line text-primary me-2"></i>Live Round-Trip Latency (RTT) & Telemetry
+                </h6>
+                <div class="d-flex align-items-center gap-3">
+                    <span class="badge bg-light text-dark border">
+                        Packet Loss: <strong id="live-loss-badge">0.0%</strong>
+                    </span>
+                    <span class="badge bg-light text-dark border">
+                        Avg Latency: <strong id="live-rtt-badge">0.00 ms</strong>
+                    </span>
+                </div>
+            </div>
+            <div class="card-body p-3">
+                <div style="height: 300px; width: 100%;">
+                    <canvas id="liveRttChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Controller Actions -->
+    <div class="col-lg-4">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-header bg-white border-bottom py-3">
+                <h6 class="fw-bold mb-0 text-dark">
+                    <i class="fa-solid fa-sliders text-primary me-2"></i>Failover & Route Controls
+                </h6>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small">Interactively trigger route failover or failback directly on the Linux kernel routing table.</p>
+                
+                <div class="d-grid gap-2 mb-3">
+                    <button class="btn btn-warning py-2 fw-semibold" onclick="triggerManualFailover()">
+                        <i class="fa-solid fa-arrow-right-arrow-left me-1"></i> Force Failover to Backup
+                    </button>
+                    <button class="btn btn-success py-2 fw-semibold" onclick="triggerManualFailback()">
+                        <i class="fa-solid fa-rotate-left me-1"></i> Force Failback to Primary
+                    </button>
+                </div>
+
+                <div class="border rounded p-3 bg-light mb-3">
+                    <div class="form-check form-switch mb-1">
+                        <input class="form-check-input" type="checkbox" id="check-auto-failback" onchange="toggleAutoFailback(this)">
+                        <label class="form-check-label fw-semibold" for="check-auto-failback">Enable Automatic Failback</label>
+                    </div>
+                    <small class="text-secondary d-block">
+                        When enabled, primary route is automatically reinstated after 3 consecutive stable checks.
+                    </small>
+                </div>
+
+                <div class="border rounded p-3 bg-white">
+                    <div class="fw-bold small text-uppercase text-secondary mb-2">Active Session Details</div>
+                    <div id="session-info-box" class="text-muted small">
+                        No active session running. Click <strong>New Session</strong> to start recording telemetry.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Probes Table -->
+<div class="row g-4">
+    <div class="col-12">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
+                <h6 class="fw-bold mb-0 text-dark">
+                    <i class="fa-solid fa-satellite-dish text-primary me-2"></i>Live Probe Stream (Recent Telemetry)
+                </h6>
+                <a href="{{ url_for('page_monitoring') }}" class="btn btn-sm btn-outline-primary">
+                    View Full Monitoring Feed <i class="fa-solid fa-arrow-right ms-1"></i>
+                </a>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0" id="recent-probes-table">
+                        <thead>
+                            <tr>
+                                <th>Seq</th>
+                                <th>Status</th>
+                                <th>RTT Latency</th>
+                                <th>Active Path</th>
+                                <th>Interface</th>
+                                <th>Timestamp</th>
+                            </tr>
+                        </thead>
+                        <tbody id="probes-tbody">
+                            <tr>
+                                <td colspan="6" class="text-center text-muted py-3">Waiting for telemetry probes...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Start New Session -->
+<div class="modal fade" id="newSessionModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold">Start New Experiment Session</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Session Name</label>
+                    <input type="text" class="form-control" id="modal-session-name" placeholder="e.g., Exp2_Primary_Link_Failure">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Experiment Scenario</label>
+                    <select class="form-select" id="modal-scenario-name">
+                        <option value="normal_operation">Experiment 1: Normal Network Operation</option>
+                        <option value="primary_link_disconnection">Experiment 2: Primary Link Failure</option>
+                        <option value="primary_gateway_unavailability">Experiment 3: Gateway Failure</option>
+                        <option value="primary_interface_shutdown">Experiment 4: Interface Failure</option>
+                        <option value="primary_route_removal">Experiment 5: Primary Route Removal</option>
+                        <option value="temporary_interruption">Experiment 6: Temporary Interruption / Flap</option>
+                    </select>
+                </div>
+                <div class="form-check form-switch mb-2">
+                    <input class="form-check-input" type="checkbox" id="modal-auto-failback">
+                    <label class="form-check-label fw-semibold" for="modal-auto-failback">Enable Automatic Failback</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="startNewSession()">Start Experiment</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// Chart initialization
+const ctx = document.getElementById('liveRttChart').getContext('2d');
+const liveChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: [],
+        datasets: [{
+            label: 'RTT (ms)',
+            data: [],
+            borderColor: '#2563eb',
+            backgroundColor: 'rgba(37, 99, 235, 0.1)',
+            fill: true,
+            tension: 0.3,
+            borderWidth: 2,
+            pointRadius: 2,
+            pointHoverRadius: 5
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        scales: {
+            x: {
+                display: false
+            },
+            y: {
+                beginAtZero: true,
+                title: { display: true, text: 'Latency (ms)' }
+            }
+        },
+        plugins: {
+            legend: { display: false }
+        }
+    }
+});
+
+let isSessionActive = false;
+
+// Dashboard status polling
+async function pollDashboard() {
+    try {
+        const res = await fetch('/api/status');
+        if (!res.ok) return;
+        const data = await res.json();
+
+        // Update cards
+        const top = data.topology || {};
+        const mon = data.monitor || {};
+        const fo = data.failover || {};
+        const fb = data.failback || {};
+
+        document.getElementById('card-primary-status').innerText = top.primary_path_status || 'UNKNOWN';
+        document.getElementById('card-primary-status').className = `metric-value ${top.primary_path_status === 'UP' ? 'text-success' : 'text-danger'}`;
+        
+        document.getElementById('card-backup-status').innerText = top.backup_path_status || 'UNKNOWN';
+        document.getElementById('card-backup-status').className = `metric-value ${top.backup_path_status === 'UP' ? 'text-success' : 'text-danger'}`;
+
+        const activePath = mon.active_path || 'UNKNOWN';
+        const pathEl = document.getElementById('card-active-path');
+        if (activePath === 'PRIMARY') {
+            pathEl.innerHTML = `<span class="badge bg-success">PRIMARY</span>`;
+        } else if (activePath === 'BACKUP') {
+            pathEl.innerHTML = `<span class="badge bg-warning text-dark">BACKUP</span>`;
+        } else {
+            pathEl.innerHTML = `<span class="badge bg-danger">${activePath}</span>`;
+        }
+
+        document.getElementById('card-active-gateway').innerText = `via ${top.active_gateway || 'None'} (${top.active_device || 'None'})`;
+        document.getElementById('live-loss-badge').innerText = `${mon.packet_loss_percent || 0.0}%`;
+        document.getElementById('live-rtt-badge').innerText = `${mon.avg_latency_ms || 0.0} ms`;
+
+        // Update auto-failback switch
+        document.getElementById('check-auto-failback').checked = fb.auto_failback || false;
+
+        // Session state
+        isSessionActive = data.is_session_active;
+        const stopBtn = document.getElementById('btn-stop-session');
+        const sessionBox = document.getElementById('session-info-box');
+
+        if (isSessionActive) {
+            stopBtn.disabled = false;
+            sessionBox.innerHTML = `
+                <div class="text-success fw-bold"><i class="fa-solid fa-circle-dot me-1"></i> Session #${data.session_id} Running</div>
+                <div class="mt-1">Probes: <strong>${mon.total_transmitted}</strong> &bull; Lost: <strong>${mon.total_lost}</strong></div>
+            `;
+        } else {
+            stopBtn.disabled = true;
+            sessionBox.innerHTML = `No active session running. Click <strong>New Session</strong> to start recording telemetry.`;
+        }
+
+        // Update recent probes table & chart
+        updateRecentTelemetry(mon.recent_probes || []);
+
+    } catch (e) {
+        console.error('Dashboard poll error:', e);
+    }
+}
+
+function updateRecentTelemetry(probes) {
+    if (!probes || probes.length === 0) return;
+
+    // Update chart
+    const labels = probes.map(p => new Date(p.timestamp * 1000).toLocaleTimeString());
+    const rtts = probes.map(p => p.success ? p.rtt_ms : null);
+
+    liveChart.data.labels = labels;
+    liveChart.data.datasets[0].data = rtts;
+    liveChart.update('none');
+
+    // Update table with latest 10 probes reversed
+    const tbody = document.getElementById('probes-tbody');
+    const recent = [...probes].reverse().slice(0, 10);
+    tbody.innerHTML = recent.map(p => `
+        <tr>
+            <td><strong>#${p.seq}</strong></td>
+            <td>
+                ${p.success ? '<span class="badge bg-success">REACHABLE</span>' : '<span class="badge bg-danger">TIMEOUT</span>'}
+            </td>
+            <td>${p.success && p.rtt_ms !== null ? p.rtt_ms.toFixed(3) + ' ms' : '<span class="text-danger">&mdash;</span>'}</td>
+            <td>
+                <span class="badge ${p.active_path === 'PRIMARY' ? 'bg-success' : 'bg-warning text-dark'}">
+                    ${p.active_path}
+                </span>
+            </td>
+            <td><code>${p.active_dev || 'veth'}</code></td>
+            <td class="text-secondary small">${new Date(p.timestamp * 1000).toLocaleTimeString()}</td>
+        </tr>
+    `).join('');
+}
+
+// Session actions
+async function startNewSession() {
+    const name = document.getElementById('modal-session-name').value || `Session_${Date.now()}`;
+    const scenario = document.getElementById('modal-scenario-name').value;
+    const failback = document.getElementById('modal-auto-failback').checked;
+
+    try {
+        const res = await fetch('/api/session/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                session_name: name,
+                scenario_name: scenario,
+                failback_enabled: failback
+            })
+        });
+        const json = await res.json();
+        if (json.success) {
+            bootstrap.Modal.getInstance(document.getElementById('newSessionModal')).hide();
+            showToast(`Session #${json.session_id} started!`, 'success');
+            pollDashboard();
+        } else {
+            showToast(`Failed: ${json.error}`, 'danger');
+        }
+    } catch (e) {
+        showToast(`Request error: ${e}`, 'danger');
+    }
+}
+
+async function stopActiveSession() {
+    if (!confirm('End the current experiment session and compute final metrics?')) return;
+    try {
+        const res = await fetch('/api/session/stop', { method: 'POST' });
+        const json = await res.json();
+        if (json.success) {
+            showToast(`Session #${json.session_id} completed and metrics stored!`, 'success');
+            pollDashboard();
+        } else {
+            showToast(`Error: ${json.error}`, 'danger');
+        }
+    } catch (e) {
+        showToast(`Request error: ${e}`, 'danger');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    pollDashboard();
+    setInterval(pollDashboard, 1000);
+});
+</script>
+{% endblock %}

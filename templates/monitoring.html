@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}Real-Time Monitoring - Network Failover Framework{% endblock %}
+
+{% block content %}
+<div class="row g-3 mb-4">
+    <div class="col-12 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h3 class="fw-bold mb-0">Live Network Telemetry & Probe Monitoring</h3>
+            <p class="text-secondary small mb-0">High-resolution ICMP echo probe stream and continuous resilience metrics</p>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <button class="btn btn-outline-secondary" id="btn-toggle-stream" onclick="toggleStream()">
+                <i class="fa-solid fa-pause me-1"></i> Pause Stream
+            </button>
+            <button class="btn btn-outline-primary" onclick="clearStreamBuffer()">
+                <i class="fa-solid fa-broom me-1"></i> Clear Buffer
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- 4 Telemetry Metric Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3 col-sm-6">
+        <div class="metric-card h-100">
+            <div class="metric-label">Connectivity Status</div>
+            <div class="metric-value text-success" id="mon-reachability">REACHABLE</div>
+            <div class="metric-sub" id="mon-active-dev">Active: veth_c_p (PRIMARY)</div>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6">
+        <div class="metric-card h-100">
+            <div class="metric-label">Packet Loss</div>
+            <div class="metric-value" id="mon-loss">0.0%</div>
+            <div class="metric-sub" id="mon-lost-ratio">0 lost / 0 sent</div>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6">
+        <div class="metric-card h-100">
+            <div class="metric-label">Average Latency</div>
+            <div class="metric-value" id="mon-latency">0.00 ms</div>
+            <div class="metric-sub" id="mon-jitter">Jitter: 0.00 ms</div>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6">
+        <div class="metric-card h-100">
+            <div class="metric-label">Network Availability</div>
+            <div class="metric-value text-primary" id="mon-avail">100.0%</div>
+            <div class="metric-sub">Session uptime ratio</div>
+        </div>
+    </div>
+</div>
+
+<!-- Live Telemetry Table Stream -->
+<div class="row">
+    <div class="col-12">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
+                <h6 class="fw-bold mb-0 text-dark">
+                    <i class="fa-solid fa-tower-broadcast text-primary me-2"></i>Continuous ICMP Probe Log (Last 100 Packets)
+                </h6>
+                <span class="badge bg-light text-dark border" id="packet-counter">Packets Streamed: 0</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive" style="max-height: 520px; overflow-y: auto;">
+                    <table class="table table-hover table-striped align-middle mb-0" id="monitoring-stream-table">
+                        <thead class="sticky-top">
+                            <tr>
+                                <th># Seq</th>
+                                <th>Timestamp</th>
+                                <th>Target Host</th>
+                                <th>Status</th>
+                                <th>Round-Trip Time</th>
+                                <th>Active Interface</th>
+                                <th>Routing Path</th>
+                            </tr>
+                        </thead>
+                        <tbody id="stream-tbody">
+                            <tr>
+                                <td colspan="7" class="text-center py-4 text-muted">Listening for live ICMP echo replies...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let streamPaused = false;
+let displayedProbes = new Set();
+
+function toggleStream() {
+    streamPaused = !streamPaused;
+    const btn = document.getElementById('btn-toggle-stream');
+    if (streamPaused) {
+        btn.innerHTML = '<i class="fa-solid fa-play me-1"></i> Resume Stream';
+        btn.className = 'btn btn-primary';
+    } else {
+        btn.innerHTML = '<i class="fa-solid fa-pause me-1"></i> Pause Stream';
+        btn.className = 'btn btn-outline-secondary';
+    }
+}
+
+function clearStreamBuffer() {
+    document.getElementById('stream-tbody').innerHTML = '';
+    displayedProbes.clear();
+}
+
+async function pollMonitoringFeed() {
+    try {
+        const res = await fetch('/api/status');
+        if (!res.ok) return;
+        const data = await res.json();
+        const mon = data.monitor || {};
+
+        // Update gauges
+        document.getElementById('mon-reachability').innerText = mon.last_probe_status ? 'REACHABLE' : 'UNREACHABLE';
+        document.getElementById('mon-reachability').className = `metric-value ${mon.last_probe_status ? 'text-success' : 'text-danger'}`;
+        document.getElementById('mon-active-dev').innerText = `Active: ${mon.active_dev || 'veth'} (${mon.active_path || 'UNKNOWN'})`;
+
+        document.getElementById('mon-loss').innerText = `${mon.packet_loss_percent || 0.0}%`;
+        document.getElementById('mon-loss').className = `metric-value ${(mon.packet_loss_percent || 0) > 0 ? 'text-danger' : 'text-success'}`;
+        document.getElementById('mon-lost-ratio').innerText = `${mon.total_lost} lost / ${mon.total_transmitted} transmitted`;
+
+        document.getElementById('mon-latency').innerText = `${(mon.avg_latency_ms || 0.0).toFixed(3)} ms`;
+        document.getElementById('mon-jitter').innerText = `Jitter: ${(mon.jitter_ms || 0.0).toFixed(3)} ms`;
+        document.getElementById('mon-avail').innerText = `${mon.availability_percent || 100.0}%`;
+        document.getElementById('packet-counter').innerText = `Packets Streamed: ${mon.total_transmitted}`;
+
+        // Stream update
+        if (!streamPaused && mon.recent_probes && mon.recent_probes.length > 0) {
+            const tbody = document.getElementById('stream-tbody');
+            const recent = [...mon.recent_probes].reverse();
+
+            tbody.innerHTML = recent.map(p => {
+                const statusBadge = p.success
+                    ? '<span class="badge bg-success"><i class="fa-solid fa-check me-1"></i>OK</span>'
+                    : '<span class="badge bg-danger"><i class="fa-solid fa-xmark me-1"></i>LOST</span>';
+
+                const pathBadge = p.active_path === 'PRIMARY'
+                    ? '<span class="badge bg-success">PRIMARY</span>'
+                    : '<span class="badge bg-warning text-dark">BACKUP</span>';
+
+                const rttFormatted = p.success && p.rtt_ms !== null ? `<strong>${p.rtt_ms.toFixed(3)} ms</strong>` : '<span class="text-danger fw-bold">&mdash;</span>';
+
+                return `
+                    <tr>
+                        <td><code>#${p.seq}</code></td>
+                        <td>${new Date(p.timestamp * 1000).toLocaleTimeString()}</td>
+                        <td><code>10.50.0.1</code></td>
+                        <td>${statusBadge}</td>
+                        <td>${rttFormatted}</td>
+                        <td><code>${p.active_dev || 'veth'}</code></td>
+                        <td>${pathBadge}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+    } catch (e) {
+        console.error('Monitoring feed error:', e);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    pollMonitoringFeed();
+    setInterval(pollMonitoringFeed, 800);
+});
+</script>
+{% endblock %}

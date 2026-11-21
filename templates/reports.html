@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+
+{% block title %}Reports & Exports - Network Failover Framework{% endblock %}
+
+{% block content %}
+<div class="row g-3 mb-4">
+    <div class="col-12 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h3 class="fw-bold mb-0">Experiment Reports & Data Export Hub</h3>
+            <p class="text-secondary small mb-0">Generate, compare, and download structured CSV datasets and academic analytical summaries</p>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <a href="{{ url_for('download_all_sessions_csv') }}" class="btn btn-primary">
+                <i class="fa-solid fa-file-arrow-down me-1"></i> Download Master Dataset (.CSV)
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Export Cards -->
+<div class="row g-4 mb-4">
+    <div class="col-md-4">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center gap-3 mb-3">
+                    <div class="p-3 bg-primary bg-opacity-10 rounded-circle text-primary fs-4">
+                        <i class="fa-solid fa-file-lines"></i>
+                    </div>
+                    <div>
+                        <h6 class="fw-bold mb-0">Master Experiment CSV</h6>
+                        <small class="text-muted">Aggregated session data & metrics</small>
+                    </div>
+                </div>
+                <p class="text-secondary small mb-3">
+                    Contains every session executed, failure detection times, failover recovery times, packet loss ratios, and availability metrics.
+                </p>
+                <a href="{{ url_for('download_all_sessions_csv') }}" class="btn btn-outline-primary btn-sm w-100">
+                    <i class="fa-solid fa-download me-1"></i> Download CSV (All Sessions)
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center gap-3 mb-3">
+                    <div class="p-3 bg-success bg-opacity-10 rounded-circle text-success fs-4">
+                        <i class="fa-solid fa-chart-pie"></i>
+                    </div>
+                    <div>
+                        <h6 class="fw-bold mb-0">Pandas Aggregated Report</h6>
+                        <small class="text-muted">Multi-run statistical evaluation</small>
+                    </div>
+                </div>
+                <p class="text-secondary small mb-3">
+                    Calculates mean detection time, recovery time, and packet loss grouped across the 5 distinct failure scenarios.
+                </p>
+                <a href="{{ url_for('page_analysis') }}" class="btn btn-outline-success btn-sm w-100">
+                    <i class="fa-solid fa-chart-column me-1"></i> View Comparative Charts
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center gap-3 mb-3">
+                    <div class="p-3 bg-warning bg-opacity-10 rounded-circle text-warning fs-4">
+                        <i class="fa-solid fa-microchip"></i>
+                    </div>
+                    <div>
+                        <h6 class="fw-bold mb-0">High-Resolution Probes</h6>
+                        <small class="text-muted">Packet-level ICMP trace logs</small>
+                    </div>
+                </div>
+                <p class="text-secondary small mb-3">
+                    Download packet-level microsecond timestamps, round-trip times, and active interface bindings for any individual experiment.
+                </p>
+                <a href="{{ url_for('page_history') }}" class="btn btn-outline-warning text-dark btn-sm w-100">
+                    <i class="fa-solid fa-clock-rotate-left me-1"></i> Select Session from History
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Scenario Comparison Analytics Table -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
+                <h6 class="fw-bold mb-0 text-dark">
+                    <i class="fa-solid fa-scale-balanced text-primary me-2"></i>Scenario Performance Comparison Matrix
+                </h6>
+                <span class="badge bg-light text-dark border">Pandas Aggregation Engine</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Failure Scenario</th>
+                                <th>Sample Count</th>
+                                <th>Mean Detection Time</th>
+                                <th>Mean Recovery Time</th>
+                                <th>Mean Packet Loss</th>
+                                <th>Mean Availability</th>
+                                <th>Mean Latency</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if comparison %}
+                                {% for row in comparison %}
+                                <tr>
+                                    <td><strong>{{ row.scenario_name }}</strong></td>
+                                    <td><span class="badge bg-secondary">{{ row.session_count }} runs</span></td>
+                                    <td class="text-warning fw-semibold">{{ row.failure_detection_time_ms or 'N/A' }} {% if row.failure_detection_time_ms %}ms{% endif %}</td>
+                                    <td class="text-success fw-bold">{{ row.failover_recovery_time_ms or 'N/A' }} {% if row.failover_recovery_time_ms %}ms{% endif %}</td>
+                                    <td class="text-danger">{{ row.packet_loss_percent or 0.0 }}%</td>
+                                    <td class="text-primary">{{ row.availability_percent or 100.0 }}%</td>
+                                    <td>{{ row.avg_latency_ms or 0.0 }} ms</td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="7" class="text-center py-4 text-muted">
+                                        No experiment trials recorded yet. Execute experiments to generate comparison metrics.
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Individual Sessions Table with Direct Downloads -->
+<div class="row">
+    <div class="col-12">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white border-bottom py-3">
+                <h6 class="fw-bold mb-0 text-dark">
+                    <i class="fa-solid fa-file-arrow-down text-primary me-2"></i>Download Individual Session Telemetry
+                </h6>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Session ID</th>
+                                <th>Name</th>
+                                <th>Scenario</th>
+                                <th>Status</th>
+                                <th>Download Telemetry</th>
+                                <th>Download Summary</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if sessions %}
+                                {% for s in sessions %}
+                                <tr>
+                                    <td><strong>#{{ s.id }}</strong></td>
+                                    <td class="fw-semibold">{{ s.session_name }}</td>
+                                    <td><code>{{ s.scenario_name }}</code></td>
+                                    <td><span class="badge bg-success">{{ s.status }}</span></td>
+                                    <td>
+                                        <a href="/download/session/{{ s.id }}/probes.csv" class="btn btn-sm btn-outline-primary">
+                                            <i class="fa-solid fa-file-lines me-1"></i> Probes (.CSV)
+                                        </a>
+                                    </td>
+                                    <td>
+                                        <a href="/download/session/{{ s.id }}/summary.csv" class="btn btn-sm btn-outline-secondary">
+                                            <i class="fa-solid fa-file-csv me-1"></i> Summary (.CSV)
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="6" class="text-center py-4 text-muted">No sessions available.</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
