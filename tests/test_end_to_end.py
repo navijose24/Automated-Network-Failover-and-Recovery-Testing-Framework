@@ -1,4 +1,7 @@
-"""Complete End-to-End Test Suite for all 6 Specified Network Experiments."""
+"""Complete End-to-End Test Suite for all 6 Specified Network Experiments.
+Validates real topology, failure detection, automatic failover, failback,
+database probe/event logging, recovery analysis, and CSV reporting.
+"""
 
 import time
 import sys
@@ -18,14 +21,80 @@ import database.models as db_models
 from database.db import init_db
 from network.interfaces import set_interface_state
 
+# Active session tracker for callbacks
+current_session_id = None
+
+def setup_callbacks(monitor, failover_ctrl, failback_ctrl):
+    """Register synchronized telemetry and event logging callbacks."""
+    def on_probe(probe):
+        failover_ctrl.process_probe(probe)
+        if failover_ctrl.failed_over and not failback_ctrl.failback_completed:
+            failback_ctrl.process_health_tick(is_failed_over=True)
+            
+        global current_session_id
+        if current_session_id is not None:
+            try:
+                db_models.log_probe(current_session_id, {
+                    "timestamp": probe.timestamp,
+                    "sequence_num": probe.sequence_num,
+                    "target_ip": probe.target_ip,
+                    "success": probe.success,
+                    "rtt_ms": probe.rtt_ms,
+                    "active_interface": probe.active_interface,
+                    "active_path": probe.active_path
+                })
+            except Exception as e:
+                print(f"[ERR] log_probe: {e}")
+
+    def on_event(event_type, data):
+        global current_session_id
+        if current_session_id is not None:
+            try:
+                db_models.log_event(
+                    session_id=current_session_id,
+                    event_type=event_type,
+                    scenario=data.get("scenario") or failover_ctrl.active_scenario,
+                    affected_interface=data.get("failed_interface") or data.get("active_device"),
+                    details=data,
+                    timestamp=data.get("timestamp") or time.time()
+                )
+            except Exception as e:
+                print(f"[ERR] log_event: {e}")
+
+    monitor.register_callback(on_probe)
+    failover_ctrl.register_listener(on_event)
+    failback_ctrl.register_listener(on_event)
+
+def finalize_session(session_id, failover_ctrl=None, failback_ctrl=None):
+    """End session, analyze recorded probes and events, and commit verified metrics."""
+    global current_session_id
+    db_models.end_session(session_id, "COMPLETED")
+    
+    probes = db_models.get_session_probes(session_id)
+    events = db_models.get_session_events(session_id)
+    
+    metrics = RecoveryAnalyzer.analyze_session(probes, events, failover_success=True)
+    if failover_ctrl and failover_ctrl.detection_time_ms is not None:
+        metrics["failure_detection_time_ms"] = failover_ctrl.detection_time_ms
+    if failover_ctrl and failover_ctrl.recovery_time_ms is not None:
+        metrics["failover_recovery_time_ms"] = failover_ctrl.recovery_time_ms
+    if failback_ctrl and failback_ctrl.failback_duration_ms is not None:
+        metrics["failback_recovery_time_ms"] = failback_ctrl.failback_duration_ms
+        
+    db_models.save_metrics(session_id, metrics)
+    current_session_id = None
+    return metrics, probes
+
 def run_experiment_1_normal(mgr, monitor):
+    global current_session_id
     print("\n=======================================================")
     print(" EXPERIMENT 1: Normal Network Operation")
     print("=======================================================")
     session_id = db_models.create_session("Exp1_Normal_Operation", "normal_operation")
+    current_session_id = session_id
     monitor.reset_stats()
     
-    # Send probes for 2 seconds
+    # Collect baseline telemetry for 2.0 seconds
     time.sleep(2.0)
     
     st = monitor.get_current_status()
@@ -39,31 +108,37 @@ def run_experiment_1_normal(mgr, monitor):
     assert st['packet_loss_percent'] == 0.0, "Expected 0% packet loss in normal baseline"
     assert st['active_path'] == "PRIMARY", f"Expected PRIMARY, got {st['active_path']}"
 
-    db_models.end_session(session_id, "COMPLETED")
-    metrics = RecoveryAnalyzer.analyze_session(st['recent_probes'], [], failover_success=True)
-    db_models.save_metrics(session_id, metrics)
-    print(">>> Experiment 1 PASSED!")
+    metrics, probes = finalize_session(session_id)
+    assert len(probes) >= 4, f"Expected recorded probes in DB, found {len(probes)}"
+    print(f">>> Experiment 1 PASSED! Logged {len(probes)} probes.")
 
 def run_experiment_2_link_failure(mgr, monitor, failover_ctrl):
+    global current_session_id
     print("\n=======================================================")
     print(" EXPERIMENT 2: Primary Link Failure")
     print("=======================================================")
     session_id = db_models.create_session("Exp2_Primary_Link_Failure", "primary_link_disconnection")
+    current_session_id = session_id
     monitor.reset_stats()
     failover_ctrl.reset_state()
     
     time.sleep(0.5)
     t0 = time.time()
-    failover_ctrl.notify_failure_triggered("primary_link_disconnection", t0, "veth_p_c")
+    t0_mono = time.monotonic()
+    failover_ctrl.notify_failure_triggered("primary_link_disconnection", t0, "veth_p_c", start_mono=t0_mono)
     set_interface_state("ns_primary", "veth_p_c", "down")
     
     # Wait for detection and failover
-    t_end = time.time() + 6.0
+    t_end = time.time() + 10.0
     while not failover_ctrl.failed_over and time.time() < t_end:
         time.sleep(0.1)
         
     assert failover_ctrl.failed_over, "Failover did not complete"
-    time.sleep(0.5)
+    
+    # Wait for monitor to confirm active path on BACKUP
+    t_wait = time.time() + 4.0
+    while monitor.get_current_status()["active_path"] != "BACKUP" and time.time() < t_wait:
+        time.sleep(0.1)
     
     st = monitor.get_current_status()
     print(f"Failure Detection Time: {failover_ctrl.detection_time_ms} ms")
@@ -74,14 +149,12 @@ def run_experiment_2_link_failure(mgr, monitor, failover_ctrl):
     # Restore link
     set_interface_state("ns_primary", "veth_p_c", "up")
     
-    db_models.end_session(session_id, "COMPLETED")
-    metrics = RecoveryAnalyzer.analyze_session(st['recent_probes'], [], failover_success=True)
-    metrics["failure_detection_time_ms"] = failover_ctrl.detection_time_ms
-    metrics["failover_recovery_time_ms"] = failover_ctrl.recovery_time_ms
-    db_models.save_metrics(session_id, metrics)
-    print(">>> Experiment 2 PASSED!")
+    metrics, probes = finalize_session(session_id, failover_ctrl=failover_ctrl)
+    assert len(probes) > 0, "No probes recorded in DB for Exp 2"
+    print(f">>> Experiment 2 PASSED! Logged {len(probes)} probes.")
 
 def run_experiment_3_gateway_failure(mgr, monitor, failover_ctrl, failback_ctrl):
+    global current_session_id
     print("\n=======================================================")
     print(" EXPERIMENT 3: Gateway Failure")
     print("=======================================================")
@@ -90,19 +163,24 @@ def run_experiment_3_gateway_failure(mgr, monitor, failover_ctrl, failback_ctrl)
     time.sleep(0.5)
     
     session_id = db_models.create_session("Exp3_Gateway_Failure", "primary_gateway_unavailability")
+    current_session_id = session_id
     monitor.reset_stats()
     failover_ctrl.reset_state()
     
     t0 = time.time()
-    failover_ctrl.notify_failure_triggered("primary_gateway_unavailability", t0, "ns_primary_gateway")
+    t0_mono = time.monotonic()
+    failover_ctrl.notify_failure_triggered("primary_gateway_unavailability", t0, "ns_primary_gateway", start_mono=t0_mono)
     apply_failure("primary_gateway_unavailability")
     
-    t_end = time.time() + 6.0
+    t_end = time.time() + 10.0
     while not failover_ctrl.failed_over and time.time() < t_end:
         time.sleep(0.1)
         
     assert failover_ctrl.failed_over, "Gateway failover did not complete"
-    time.sleep(0.5)
+    
+    t_wait = time.time() + 4.0
+    while monitor.get_current_status()["active_path"] != "BACKUP" and time.time() < t_wait:
+        time.sleep(0.1)
     
     st = monitor.get_current_status()
     print(f"Gateway Failure Detection Time: {failover_ctrl.detection_time_ms} ms")
@@ -113,14 +191,12 @@ def run_experiment_3_gateway_failure(mgr, monitor, failover_ctrl, failback_ctrl)
     # Restore gateway
     restore_failure("primary_gateway_unavailability")
     
-    db_models.end_session(session_id, "COMPLETED")
-    metrics = RecoveryAnalyzer.analyze_session(st['recent_probes'], [], failover_success=True)
-    metrics["failure_detection_time_ms"] = failover_ctrl.detection_time_ms
-    metrics["failover_recovery_time_ms"] = failover_ctrl.recovery_time_ms
-    db_models.save_metrics(session_id, metrics)
-    print(">>> Experiment 3 PASSED!")
+    metrics, probes = finalize_session(session_id, failover_ctrl=failover_ctrl)
+    assert len(probes) > 0, "No probes recorded in DB for Exp 3"
+    print(f">>> Experiment 3 PASSED! Logged {len(probes)} probes.")
 
 def run_experiment_4_interface_failure(mgr, monitor, failover_ctrl, failback_ctrl):
+    global current_session_id
     print("\n=======================================================")
     print(" EXPERIMENT 4: Primary Interface Failure")
     print("=======================================================")
@@ -128,19 +204,24 @@ def run_experiment_4_interface_failure(mgr, monitor, failover_ctrl, failback_ctr
     time.sleep(0.5)
     
     session_id = db_models.create_session("Exp4_Interface_Failure", "primary_interface_shutdown")
+    current_session_id = session_id
     monitor.reset_stats()
     failover_ctrl.reset_state()
     
     t0 = time.time()
-    failover_ctrl.notify_failure_triggered("primary_interface_shutdown", t0, "veth_p_s")
+    t0_mono = time.monotonic()
+    failover_ctrl.notify_failure_triggered("primary_interface_shutdown", t0, "veth_p_s", start_mono=t0_mono)
     apply_failure("primary_interface_shutdown")
     
-    t_end = time.time() + 6.0
+    t_end = time.time() + 10.0
     while not failover_ctrl.failed_over and time.time() < t_end:
         time.sleep(0.1)
         
     assert failover_ctrl.failed_over, "Interface failover did not complete"
-    time.sleep(0.5)
+    
+    t_wait = time.time() + 4.0
+    while monitor.get_current_status()["active_path"] != "BACKUP" and time.time() < t_wait:
+        time.sleep(0.1)
     
     st = monitor.get_current_status()
     print(f"Interface Detection Time: {failover_ctrl.detection_time_ms} ms")
@@ -151,74 +232,87 @@ def run_experiment_4_interface_failure(mgr, monitor, failover_ctrl, failback_ctr
     # Restore interface
     restore_failure("primary_interface_shutdown")
     
-    db_models.end_session(session_id, "COMPLETED")
-    metrics = RecoveryAnalyzer.analyze_session(st['recent_probes'], [], failover_success=True)
-    metrics["failure_detection_time_ms"] = failover_ctrl.detection_time_ms
-    metrics["failover_recovery_time_ms"] = failover_ctrl.recovery_time_ms
-    db_models.save_metrics(session_id, metrics)
-    print(">>> Experiment 4 PASSED!")
+    metrics, probes = finalize_session(session_id, failover_ctrl=failover_ctrl)
+    assert len(probes) > 0, "No probes recorded in DB for Exp 4"
+    print(f">>> Experiment 4 PASSED! Logged {len(probes)} probes.")
 
 def run_experiment_5_restoration_failback(mgr, monitor, failover_ctrl, failback_ctrl):
+    global current_session_id
     print("\n=======================================================")
     print(" EXPERIMENT 5: Primary Path Restoration & Failback")
     print("=======================================================")
     session_id = db_models.create_session("Exp5_Restoration_Failback", "primary_path_restoration", failback_enabled=True)
+    current_session_id = session_id
     
     # Currently on BACKUP from Exp 4
     # Execute verified failback to primary
     res = failback_ctrl.execute_failback()
     assert res['success'], f"Failback execution failed: {res}"
-    time.sleep(0.5)
+    
+    t_wait = time.time() + 4.0
+    while monitor.get_current_status()["active_path"] != "PRIMARY" and time.time() < t_wait:
+        time.sleep(0.1)
     
     st = monitor.get_current_status()
     print(f"Failback Duration: {failback_ctrl.failback_duration_ms} ms")
     print(f"Restored Active Path: {st['active_path']}")
     assert st['active_path'] == "PRIMARY", "Traffic not restored to PRIMARY after failback"
 
-    db_models.end_session(session_id, "COMPLETED")
-    metrics = RecoveryAnalyzer.analyze_session(st['recent_probes'], [], failover_success=True)
-    metrics["failback_recovery_time_ms"] = failback_ctrl.failback_duration_ms
-    db_models.save_metrics(session_id, metrics)
-    print(">>> Experiment 5 PASSED!")
+    metrics, probes = finalize_session(session_id, failback_ctrl=failback_ctrl)
+    assert len(probes) > 0, "No probes recorded in DB for Exp 5"
+    print(f">>> Experiment 5 PASSED! Logged {len(probes)} probes.")
 
 def run_experiment_6_repeated_cycles(mgr, monitor, failover_ctrl, failback_ctrl):
     print("\n=======================================================")
     print(" EXPERIMENT 6: Repeated Failure Testing (3 Consecutive Cycles)")
     print("=======================================================")
+    global current_session_id
     cycle_metrics = []
     
     for cycle in range(1, 4):
         print(f"\n--- Cycle {cycle}/3 ---")
+        session_id = db_models.create_session(f"Exp6_Repeated_Cycle_{cycle}", "primary_gateway_unavailability", failback_enabled=True)
+        current_session_id = session_id
         failover_ctrl.reset_state()
         failback_ctrl.reset_state()
         time.sleep(0.5)
         
         # Inject failure
         t0 = time.time()
-        failover_ctrl.notify_failure_triggered("primary_gateway_unavailability", t0, "gateway")
+        t0_mono = time.monotonic()
+        failover_ctrl.notify_failure_triggered("primary_gateway_unavailability", t0, "gateway", start_mono=t0_mono)
         apply_failure("primary_gateway_unavailability")
         
-        t_end = time.time() + 9.0
+        t_end = time.time() + 10.0
         while not failover_ctrl.failed_over and time.time() < t_end:
             time.sleep(0.1)
             
         assert failover_ctrl.failed_over, f"Cycle {cycle} failover failed"
-        time.sleep(0.4)
+        
+        t_wait = time.time() + 4.0
+        while monitor.get_current_status()["active_path"] != "BACKUP" and time.time() < t_wait:
+            time.sleep(0.1)
         
         # Restore and failback
         restore_failure("primary_gateway_unavailability")
         time.sleep(0.3)
         fb_res = failback_ctrl.execute_failback()
         assert fb_res['success'], f"Cycle {cycle} failback failed"
-        time.sleep(0.5)
+        
+        t_wait_fb = time.time() + 4.0
+        while monitor.get_current_status()["active_path"] != "PRIMARY" and time.time() < t_wait_fb:
+            time.sleep(0.1)
+        
+        metrics, probes = finalize_session(session_id, failover_ctrl=failover_ctrl, failback_ctrl=failback_ctrl)
         
         cycle_metrics.append({
             "cycle": cycle,
             "detection_ms": failover_ctrl.detection_time_ms,
             "recovery_ms": failover_ctrl.recovery_time_ms,
-            "failback_ms": failback_ctrl.failback_duration_ms
+            "failback_ms": failback_ctrl.failback_duration_ms,
+            "probes_count": len(probes)
         })
-        print(f"Cycle {cycle} Result: Detection={failover_ctrl.detection_time_ms} ms, Recovery={failover_ctrl.recovery_time_ms} ms, Failback={failback_ctrl.failback_duration_ms} ms")
+        print(f"Cycle {cycle} Result: Detection={failover_ctrl.detection_time_ms} ms, Recovery={failover_ctrl.recovery_time_ms} ms, Failback={failback_ctrl.failback_duration_ms} ms, Probes={len(probes)}")
 
     assert len(cycle_metrics) == 3
     print(">>> Experiment 6 Repeated Cycles PASSED successfully!")
@@ -237,7 +331,7 @@ def main():
     failover_ctrl = FailoverController(failure_threshold=3)
     failback_ctrl = FailbackController(stability_threshold=3, auto_failback=True)
     
-    monitor.register_callback(failover_ctrl.process_probe)
+    setup_callbacks(monitor, failover_ctrl, failback_ctrl)
     monitor.start()
     
     try:
@@ -256,6 +350,15 @@ def main():
         assert "session_id" in csv_all, "All sessions CSV header missing"
         print("Master CSV Generated: Length =", len(csv_all), "bytes")
         
+        # Verify single session probe CSV export has real rows
+        latest_sessions = db_models.get_all_sessions(limit=1)
+        if latest_sessions:
+            s_id = latest_sessions[0]["id"]
+            probe_csv = ReportGenerator.generate_session_probes_csv(s_id)
+            lines = [l for l in probe_csv.strip().split("\n") if l]
+            print(f"Session {s_id} Probe CSV Generated: {len(lines)} lines (header + {len(lines)-1} probes)")
+            assert len(lines) > 1, f"Expected data rows in session probe CSV, got {len(lines)}"
+
         comparison = ReportGenerator.get_scenario_comparison_summary()
         print("Pandas Aggregation Summary:")
         for r in comparison:

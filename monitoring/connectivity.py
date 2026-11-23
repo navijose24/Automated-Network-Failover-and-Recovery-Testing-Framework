@@ -36,7 +36,8 @@ def send_probe(sequence_num: int = 1, target_ip: Optional[str] = None, timeout: 
     dev = route_info.get("dev") or "unknown"
     path = route_info.get("active_path") or "UNKNOWN"
 
-    cmd = f"ping -c 1 -W {int(timeout)} {target}"
+    w_sec = max(1, int(round(timeout)))
+    cmd = f"ping -c 1 -W {w_sec} {target}"
     res = run_in_ns(NS_CLIENT, cmd, timeout=timeout + 1.0)
     
     success = False
@@ -73,6 +74,7 @@ def test_interface_probe(dev: str, target_ip: Optional[str] = None, timeout: flo
     ip netns exec ns_client ping -c 1 -W <timeout> -I <dev> <target_ip>
     """
     target = target_ip or IP_CONFIG["target_ip"]
-    cmd = f"ping -c 1 -W {int(timeout)} -I {dev} {target}"
+    w_sec = max(1, int(round(timeout)))
+    cmd = f"ping -c 1 -W {w_sec} -I {dev} {target}"
     res = run_in_ns(NS_CLIENT, cmd, timeout=timeout + 1.0)
     return res.success and ("1 packets transmitted, 1 received" in res.stdout or "time=" in res.stdout)

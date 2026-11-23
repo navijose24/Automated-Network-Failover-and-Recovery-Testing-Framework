@@ -12,15 +12,7 @@ proc = subprocess.Popen(
     stderr=subprocess.STDOUT
 )
 
-print("Flask starting... waiting 12s for topology setup")
-time.sleep(12)
-
-# Check if process is still alive
-if proc.poll() is not None:
-    out, _ = proc.communicate()
-    print("FLASK DIED! Output:")
-    print(out.decode()[:3000])
-    sys.exit(1)
+print("Flask starting... polling for readiness on http://127.0.0.1:5000")
 
 # Test endpoints
 import urllib.request
@@ -38,8 +30,25 @@ def curl(url):
     except Exception as e:
         return 0, str(e)
 
+# Poll until Flask is ready
+t_deadline = time.time() + 25.0
+ready = False
+while time.time() < t_deadline:
+    if proc.poll() is not None:
+        out, _ = proc.communicate()
+        print("FLASK DIED! Output:\n", out.decode()[:3000])
+        sys.exit(1)
+    code, _ = curl("http://127.0.0.1:5000/api/status")
+    if code == 200:
+        ready = True
+        break
+    time.sleep(1.0)
+
+if not ready:
+    print("Flask failed to become ready within 25 seconds.")
+
 for path in ["/", "/topology", "/simulation", "/monitoring", "/analysis", "/history", "/reports", "/api/status"]:
-    code, body = curl(f"http://localhost:5000{path}")
+    code, body = curl(f"http://127.0.0.1:5000{path}")
     results[path] = code
     print(f"  {code}  {path}  {body[:80] if code == 200 else body[:200]}")
 

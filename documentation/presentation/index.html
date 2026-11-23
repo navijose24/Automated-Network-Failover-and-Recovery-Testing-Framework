@@ -1,0 +1,1585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Automated Network Failover and Recovery Testing Framework — Academic Defense</title>
+  
+  <!-- Google Fonts for Editorial Minimal Aesthetic -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    /* =========================================================
+       MINIMAL WARM EDITORIAL + GLASSMORPHISM THEME
+       Palette: Cream, Beige, Charcoal/Black, Mild Muted Accents
+       ========================================================= */
+    :root {
+      --bg-cream: #F8F5EE;
+      --bg-cream-alt: #F2ECE0;
+      
+      --text-dark: #161514;
+      --text-body: #423F3A;
+      --text-muted: #78736B;
+      
+      --dark-canvas: #121110;
+      --text-light: #FAF7F2;
+      --text-light-muted: #BDB7AB;
+      
+      /* Glassmorphism Surface Tokens */
+      --glass-bg-light: rgba(255, 255, 255, 0.58);
+      --glass-bg-hover: rgba(255, 255, 255, 0.76);
+      --glass-border-light: rgba(255, 255, 255, 0.72);
+      --glass-shadow-light: 0 16px 36px 0 rgba(0, 0, 0, 0.05), inset 0 1px 1px 0 rgba(255, 255, 255, 0.85);
+
+      --glass-bg-dark: rgba(26, 24, 22, 0.62);
+      --glass-bg-dark-hover: rgba(36, 33, 30, 0.75);
+      --glass-border-dark: rgba(255, 255, 255, 0.12);
+      --glass-shadow-dark: 0 20px 45px 0 rgba(0, 0, 0, 0.45), inset 0 1px 1px 0 rgba(255, 255, 255, 0.14);
+
+      /* Mild Muted Accents */
+      --accent-terracotta: #BC5A36;
+      --accent-terracotta-bg: rgba(188, 90, 54, 0.12);
+      --accent-sage: #4D6D53;
+      --accent-sage-bg: rgba(77, 109, 83, 0.12);
+      --accent-ochre: #B5873A;
+      --accent-ochre-bg: rgba(181, 135, 58, 0.12);
+      --accent-slate: #4B6178;
+      --accent-slate-bg: rgba(75, 97, 120, 0.12);
+
+      --font-display: 'Newsreader', Georgia, serif;
+      --font-ui: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', Consolas, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      font-family: var(--font-ui);
+      color: var(--text-body);
+      background-color: var(--bg-cream);
+      -webkit-font-smoothing: antialiased;
+      transition: background-color 0.4s ease;
+    }
+
+    body.dark-theme {
+      background-color: var(--dark-canvas);
+      color: var(--text-light);
+    }
+
+    /* Ambient Glassmorphism Glow Background Mesh */
+    .ambient-glow-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 1;
+      overflow: hidden;
+    }
+
+    .glow-orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(90px);
+      opacity: 0.55;
+      transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    /* Light Theme Ambient Lights */
+    body:not(.dark-theme) .orb-1 {
+      width: 650px;
+      height: 650px;
+      top: -150px;
+      left: -100px;
+      background: radial-gradient(circle, rgba(226, 185, 120, 0.35) 0%, rgba(226, 185, 120, 0) 70%);
+    }
+
+    body:not(.dark-theme) .orb-2 {
+      width: 750px;
+      height: 750px;
+      bottom: -200px;
+      right: -100px;
+      background: radial-gradient(circle, rgba(188, 90, 54, 0.22) 0%, rgba(188, 90, 54, 0) 70%);
+    }
+
+    body:not(.dark-theme) .orb-3 {
+      width: 550px;
+      height: 550px;
+      top: 25%;
+      right: 15%;
+      background: radial-gradient(circle, rgba(77, 109, 83, 0.24) 0%, rgba(77, 109, 83, 0) 70%);
+    }
+
+    body:not(.dark-theme) .orb-4 {
+      width: 500px;
+      height: 500px;
+      bottom: 10%;
+      left: 20%;
+      background: radial-gradient(circle, rgba(75, 97, 120, 0.18) 0%, rgba(75, 97, 120, 0) 70%);
+    }
+
+    /* Dark Theme Ambient Lights */
+    body.dark-theme .orb-1 {
+      width: 700px;
+      height: 700px;
+      top: -150px;
+      left: -100px;
+      background: radial-gradient(circle, rgba(181, 135, 58, 0.22) 0%, rgba(181, 135, 58, 0) 70%);
+    }
+
+    body.dark-theme .orb-2 {
+      width: 800px;
+      height: 800px;
+      bottom: -200px;
+      right: -100px;
+      background: radial-gradient(circle, rgba(188, 90, 54, 0.18) 0%, rgba(188, 90, 54, 0) 70%);
+    }
+
+    body.dark-theme .orb-3 {
+      width: 600px;
+      height: 600px;
+      top: 20%;
+      right: 20%;
+      background: radial-gradient(circle, rgba(75, 97, 120, 0.22) 0%, rgba(75, 97, 120, 0) 70%);
+    }
+
+    body.dark-theme .orb-4 {
+      width: 550px;
+      height: 550px;
+      bottom: 10%;
+      left: 15%;
+      background: radial-gradient(circle, rgba(77, 109, 83, 0.18) 0%, rgba(77, 109, 83, 0) 70%);
+    }
+
+    /* FULL PAGE PRESENTATION DECK CONTAINER */
+    #deck-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      z-index: 10;
+    }
+
+    /* TOP FROSTED GLASS BAR */
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 54px;
+      background: rgba(248, 245, 238, 0.68);
+      backdrop-filter: blur(20px) saturate(180%);
+      -webkit-backdrop-filter: blur(20px) saturate(180%);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.65);
+      z-index: 20;
+      transition: all 0.3s ease;
+    }
+
+    body.dark-theme .top-bar {
+      background: rgba(18, 17, 16, 0.72);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .top-left {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    /* Glass Pill Badges */
+    .pill-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-ui);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 5px 12px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.65);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      color: var(--text-dark);
+      border: 1px solid rgba(255, 255, 255, 0.75);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+    }
+
+    .pill-tag.dark {
+      background: rgba(36, 33, 30, 0.7);
+      color: var(--accent-ochre);
+      border-color: rgba(255, 255, 255, 0.12);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+
+    .pill-tag.ochre {
+      background: var(--accent-ochre-bg);
+      color: var(--accent-ochre);
+      border-color: rgba(181, 135, 58, 0.3);
+    }
+
+    .pill-tag.sage {
+      background: var(--accent-sage-bg);
+      color: var(--accent-sage);
+      border-color: rgba(77, 109, 83, 0.3);
+    }
+
+    .pill-tag.terracotta {
+      background: var(--accent-terracotta-bg);
+      color: var(--accent-terracotta);
+      border-color: rgba(188, 90, 54, 0.3);
+    }
+
+    .pill-tag.slate {
+      background: var(--accent-slate-bg);
+      color: var(--accent-slate);
+      border-color: rgba(75, 97, 120, 0.3);
+    }
+
+    .breadcrumb-title {
+      font-size: 13px;
+      color: var(--text-muted);
+      font-weight: 500;
+      letter-spacing: 0.01em;
+    }
+
+    body.dark-theme .breadcrumb-title {
+      color: var(--text-light-muted);
+    }
+
+    .top-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .timer-badge {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      font-weight: 500;
+      padding: 5px 12px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.7);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.8);
+      color: var(--text-dark);
+      cursor: pointer;
+      user-select: none;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+      transition: all 0.15s ease;
+    }
+
+    .timer-badge:hover {
+      background: rgba(255, 255, 255, 0.9);
+      transform: translateY(-1px);
+    }
+
+    .timer-badge.dark {
+      background: rgba(36, 33, 30, 0.7);
+      border-color: rgba(255, 255, 255, 0.12);
+      color: var(--text-light);
+    }
+
+    .timer-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent-sage);
+      box-shadow: 0 0 8px rgba(77, 109, 83, 0.6);
+    }
+
+    .btn-icon {
+      background: rgba(255, 255, 255, 0.7);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.8);
+      color: var(--text-dark);
+      font-size: 11.5px;
+      font-weight: 600;
+      padding: 5px 14px;
+      border-radius: 20px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+      transition: all 0.15s ease;
+      font-family: var(--font-ui);
+    }
+
+    .btn-icon:hover {
+      background: rgba(255, 255, 255, 0.95);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+    }
+
+    .btn-icon.dark {
+      background: rgba(36, 33, 30, 0.7);
+      border-color: rgba(255, 255, 255, 0.12);
+      color: var(--text-light);
+    }
+
+    .btn-icon.dark:hover {
+      background: rgba(48, 44, 40, 0.9);
+      border-color: rgba(255, 255, 255, 0.22);
+    }
+
+    /* FULL PAGE SLIDE STAGE */
+    .slide-stage {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      padding: 22px 54px;
+      display: flex;
+      flex-direction: column;
+      z-index: 10;
+    }
+
+    .slide {
+      position: absolute;
+      top: 22px;
+      left: 54px;
+      right: 54px;
+      bottom: 22px;
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(10px);
+      transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.3s;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .slide.active {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+      z-index: 10;
+    }
+
+    /* Slide Header */
+    .slide-header {
+      margin-bottom: 22px;
+      border-bottom: 1px solid rgba(221, 214, 199, 0.6);
+      padding-bottom: 14px;
+    }
+
+    body.dark-theme .slide-header {
+      border-bottom-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .slide-title {
+      font-family: var(--font-display);
+      font-size: 34px;
+      font-weight: 500;
+      color: var(--text-dark);
+      letter-spacing: -0.01em;
+      line-height: 1.15;
+    }
+
+    body.dark-theme .slide-title {
+      color: var(--text-light);
+    }
+
+    /* Grid Layouts (Full-page proportional) */
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      flex: 1;
+    }
+
+    .grid-2x2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      grid-template-rows: repeat(2, 1fr);
+      gap: 22px;
+      flex: 1;
+    }
+
+    .grid-split {
+      display: grid;
+      grid-template-columns: 1.9fr 1fr;
+      gap: 28px;
+      flex: 1;
+      align-items: stretch;
+    }
+
+    .grid-6 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(2, 1fr);
+      gap: 20px;
+      flex: 1;
+    }
+
+    /* GLASSMORPHISM CARDS */
+    .aesthetic-card {
+      background: var(--glass-bg-light);
+      backdrop-filter: blur(24px) saturate(190%);
+      -webkit-backdrop-filter: blur(24px) saturate(190%);
+      border: 1px solid var(--glass-border-light);
+      box-shadow: var(--glass-shadow-light);
+      border-radius: 14px;
+      padding: 26px 30px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .aesthetic-card:hover {
+      transform: translateY(-3px);
+      background: var(--glass-bg-hover);
+      box-shadow: 0 20px 45px 0 rgba(0, 0, 0, 0.08), inset 0 1px 1px 0 rgba(255, 255, 255, 1);
+    }
+
+    .aesthetic-card.dark {
+      background: var(--glass-bg-dark);
+      border: 1px solid var(--glass-border-dark);
+      box-shadow: var(--glass-shadow-dark);
+      color: var(--text-light);
+    }
+
+    .aesthetic-card.dark:hover {
+      background: var(--glass-bg-dark-hover);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .card-num {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--accent-ochre);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .card-title {
+      font-family: var(--font-ui);
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--text-dark);
+      margin-bottom: 12px;
+      line-height: 1.3;
+    }
+
+    body.dark-theme .card-title {
+      color: var(--text-light);
+    }
+
+    .card-body {
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--text-body);
+      flex: 1;
+    }
+
+    body.dark-theme .card-body {
+      color: var(--text-light-muted);
+    }
+
+    .card-body ul {
+      list-style-type: none;
+    }
+
+    .card-body ul li {
+      position: relative;
+      padding-left: 20px;
+      margin-bottom: 10px;
+    }
+
+    .card-body ul li::before {
+      content: "•";
+      position: absolute;
+      left: 0;
+      color: var(--accent-ochre);
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    /* GLASS STAT METRIC CARDS */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 20px;
+      margin-top: 18px;
+    }
+
+    .stat-card {
+      background: var(--glass-bg-light);
+      backdrop-filter: blur(24px) saturate(190%);
+      -webkit-backdrop-filter: blur(24px) saturate(190%);
+      border: 1px solid var(--glass-border-light);
+      box-shadow: var(--glass-shadow-light);
+      border-radius: 12px;
+      padding: 16px 22px;
+      text-align: left;
+      transition: all 0.2s ease;
+    }
+
+    .stat-card:hover {
+      transform: translateY(-2px);
+      background: var(--glass-bg-hover);
+    }
+
+    .stat-val {
+      font-family: var(--font-display);
+      font-size: 32px;
+      font-weight: 600;
+      color: var(--text-dark);
+      line-height: 1.1;
+      margin-bottom: 4px;
+    }
+
+    .stat-label {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--accent-ochre);
+      margin-bottom: 3px;
+    }
+
+    .stat-sub {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* GLASS IMAGE DISPLAY FRAME */
+    .img-frame {
+      background: var(--glass-bg-light);
+      backdrop-filter: blur(24px) saturate(190%);
+      -webkit-backdrop-filter: blur(24px) saturate(190%);
+      border: 1px solid var(--glass-border-light);
+      box-shadow: var(--glass-shadow-light);
+      border-radius: 14px;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100%;
+      padding: 14px;
+      cursor: zoom-in;
+      transition: all 0.25s ease;
+    }
+
+    .img-frame:hover {
+      border-color: var(--accent-ochre);
+      transform: scale(1.008);
+    }
+
+    .img-frame img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      border-radius: 8px;
+    }
+
+    /* BOTTOM FROSTED GLASS CONTROL BAR */
+    .bottom-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 54px;
+      background: rgba(248, 245, 238, 0.68);
+      backdrop-filter: blur(20px) saturate(180%);
+      -webkit-backdrop-filter: blur(20px) saturate(180%);
+      border-top: 1px solid rgba(255, 255, 255, 0.65);
+      z-index: 20;
+      transition: all 0.3s ease;
+    }
+
+    body.dark-theme .bottom-bar {
+      background: rgba(18, 17, 16, 0.72);
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .progress-track {
+      flex: 1;
+      max-width: 580px;
+      height: 4px;
+      background: rgba(200, 192, 178, 0.4);
+      border-radius: 3px;
+      overflow: hidden;
+      margin: 0 30px;
+    }
+
+    body.dark-theme .progress-track {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 10%;
+      background: var(--accent-ochre);
+      box-shadow: 0 0 10px rgba(181, 135, 58, 0.8);
+      transition: width 0.25s ease;
+    }
+
+    .nav-btn-group {
+      display: flex;
+      gap: 8px;
+    }
+
+    .nav-btn {
+      background: rgba(255, 255, 255, 0.7);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.8);
+      color: var(--text-dark);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      user-select: none;
+      font-family: var(--font-ui);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+      transition: all 0.15s ease;
+    }
+
+    .nav-btn:hover {
+      background: rgba(255, 255, 255, 0.95);
+      transform: translateY(-1px);
+    }
+
+    body.dark-theme .nav-btn {
+      background: rgba(36, 33, 30, 0.7);
+      border-color: rgba(255, 255, 255, 0.12);
+      color: var(--text-light);
+    }
+
+    body.dark-theme .nav-btn:hover {
+      background: rgba(50, 46, 43, 0.9);
+    }
+
+    /* FROSTED GLASS PRESENTER NOTES DRAWER */
+    #notes-drawer {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 280px;
+      background: rgba(18, 17, 16, 0.82);
+      backdrop-filter: blur(30px) saturate(200%);
+      -webkit-backdrop-filter: blur(30px) saturate(200%);
+      border-top: 1px solid rgba(255, 255, 255, 0.16);
+      color: var(--text-light);
+      padding: 28px 54px;
+      transform: translateY(100%);
+      transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 50;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 -15px 50px rgba(0,0,0,0.5);
+    }
+
+    #notes-drawer.open {
+      transform: translateY(0);
+    }
+
+    .notes-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding-bottom: 10px;
+    }
+
+    .notes-meta {
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      color: var(--accent-ochre);
+    }
+
+    .notes-close {
+      color: var(--text-light-muted);
+      cursor: pointer;
+      font-size: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: rgba(255, 255, 255, 0.05);
+      padding: 4px 10px;
+      border-radius: 4px;
+      transition: all 0.15s ease;
+    }
+
+    .notes-close:hover {
+      background: rgba(255, 255, 255, 0.15);
+      color: #FFF;
+    }
+
+    .notes-body {
+      overflow-y: auto;
+      font-size: 15px;
+      line-height: 1.7;
+      color: #E6E0D6;
+      font-family: var(--font-ui);
+    }
+
+    /* SLIDE OVERVIEW MODAL (Frosted Glass) */
+    #overview-modal {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(14, 13, 12, 0.88);
+      backdrop-filter: blur(25px);
+      -webkit-backdrop-filter: blur(25px);
+      z-index: 100;
+      display: none;
+      flex-direction: column;
+      padding: 50px 80px;
+    }
+
+    #overview-modal.open {
+      display: flex;
+    }
+
+    .overview-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 22px;
+      overflow-y: auto;
+      margin-top: 24px;
+      padding-bottom: 20px;
+    }
+
+    .thumb-card {
+      background: rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 8px;
+      aspect-ratio: 16 / 9;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .thumb-card:hover {
+      transform: scale(1.04);
+      background: rgba(255, 255, 255, 0.15);
+      border-color: var(--accent-ochre);
+    }
+
+    .thumb-card.active {
+      border: 2px solid var(--accent-ochre);
+      box-shadow: 0 0 20px rgba(181, 135, 58, 0.4);
+    }
+
+    .thumb-num {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      font-weight: 600;
+      color: var(--accent-ochre);
+    }
+
+    .thumb-title {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--text-light);
+      line-height: 1.25;
+    }
+
+    /* LIGHTBOX MODAL */
+    #lightbox-modal {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(8, 8, 8, 0.92);
+      backdrop-filter: blur(25px);
+      z-index: 200;
+      display: none;
+      justify-content: center;
+      align-items: center;
+      padding: 40px;
+      cursor: zoom-out;
+    }
+
+    #lightbox-modal.open {
+      display: flex;
+    }
+
+    #lightbox-img {
+      max-width: 95%;
+      max-height: 95%;
+      object-fit: contain;
+      border-radius: 8px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.9);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+    }
+  </style>
+</head>
+<body>
+
+<!-- AMBIENT GLASSMORPHISM GLOW ORBS -->
+<div class="ambient-glow-layer">
+  <div class="glow-orb orb-1"></div>
+  <div class="glow-orb orb-2"></div>
+  <div class="glow-orb orb-3"></div>
+  <div class="glow-orb orb-4"></div>
+</div>
+
+<div id="deck-container">
+    
+  <!-- TOP FROSTED GLASS BAR -->
+  <div class="top-bar">
+    <div class="top-left">
+      <span class="pill-tag" id="category-badge" style="display: none;"></span>
+    </div>
+    <div class="top-right">
+      <div class="timer-badge" id="timer-btn" title="Click to start/pause 10-minute timer">
+        <span class="timer-dot" id="timer-dot"></span>
+        <span id="timer-display">10:00</span>
+      </div>
+      <button class="btn-icon" id="btn-notes" title="Press 'N' to toggle speaker notes">
+        <span>Notes (N)</span>
+      </button>
+      <button class="btn-icon" id="btn-overview" title="Press 'O' to view all slides">
+        <span>Overview (O)</span>
+      </button>
+      <button class="btn-icon" id="btn-fullscreen" title="Press 'F' for fullscreen">
+        <span>Full (F)</span>
+      </button>
+      <span class="pill-tag" id="slide-counter">01 / 10</span>
+    </div>
+  </div>
+
+  <!-- FULL PAGE SLIDE STAGE -->
+  <div class="slide-stage">
+
+    <!-- ========================================== -->
+    <!-- SLIDE 1: TITLE (Minimal Dark Glassmorphism) -->
+    <!-- ========================================== -->
+    <div class="slide active" id="slide-1" data-bg="dark" data-category="" data-time="00:00 - 00:30 (30s)">
+      <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 40px 60px;">
+        <h1 style="font-family: var(--font-display); font-size: 58px; font-weight: 500; color: var(--text-light); line-height: 1.18; margin-bottom: 22px; max-width: 1050px;">
+          Automated Network Failover and<br>Recovery Testing Framework
+        </h1>
+        <p style="font-size: 20px; color: var(--text-light-muted); max-width: 860px; line-height: 1.6; margin-bottom: 40px;">
+          Empirical Evaluation, Autonomous Route Reconfiguration, and Sub-Millisecond Telemetry in Linux Namespaces.
+        </p>
+        <div>
+          <button class="nav-btn" onclick="nextSlide()" style="padding: 10px 28px; font-size: 14px; border-radius: 24px; background: rgba(181, 135, 58, 0.22); border: 1px solid rgba(181, 135, 58, 0.6); color: var(--accent-ochre); cursor: pointer;">
+            Start Presentation →
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- SLIDE 2: PROBLEM STATEMENT & MOTIVATION -->
+    <!-- ========================================== -->
+    <div class="slide" id="slide-2" data-bg="cream" data-category="PROBLEM STATEMENT & MOTIVATION" data-time="00:30 - 01:20 (50s)">
+      <div class="slide-header">
+        <h2 class="slide-title">The Core Problem: High-Availability Failover Evaluation</h2>
+      </div>
+      <div class="grid-3">
+        <div class="aesthetic-card">
+          <span class="pill-tag terracotta" style="align-self: flex-start; margin-bottom: 14px;">SLA IMPACT</span>
+          <div class="card-title">Network Failures Cause Costly Outages</div>
+          <div class="card-body">
+            <ul>
+              <li>Fiber cuts, gateway crashes, and interface drops disrupt mission-critical traffic in enterprise backbones and cloud clusters.</li>
+              <li>Downtime triggers severe SLA financial penalties and distributed database split-brain conditions.</li>
+              <li><strong>Silent gateway blackholing</strong> occurs when links remain electrically UP but forwarding drops, completely evading link-state detection.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="aesthetic-card">
+          <span class="pill-tag ochre" style="align-self: flex-start; margin-bottom: 14px;">TESTING DILEMMA</span>
+          <div class="card-title">Existing Testing Is Costly & Non-Deterministic</div>
+          <div class="card-body">
+            <ul>
+              <li>Manual cable pulling lacks repeatability and automated sub-millisecond telemetry.</li>
+              <li>Proprietary hardware test appliances (Ixia, Spirent) cost upwards of $50,000.</li>
+              <li>Synthetic simulators (Packet Tracer, NS-3) bypass real Linux kernel routing tables, missing operating system race conditions.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="aesthetic-card">
+          <span class="pill-tag sage" style="align-self: flex-start; margin-bottom: 14px;">THE SOLUTION</span>
+          <div class="card-title">Need for Closed-Loop Empirical Validation</div>
+          <div class="card-body">
+            <ul>
+              <li>Automated, repeatable disruption injection across diverse failure profiles.</li>
+              <li>Real operating system networking (iproute2) with zero synthetic mocking.</li>
+              <li>Sub-millisecond empirical metric extraction: Detection, Recovery, Loss %, Latency.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- SLIDE 3: OBJECTIVES & METHODOLOGY -->
+    <!-- ========================================== -->
+    <div class="slide" id="slide-3" data-bg="cream" data-category="PROJECT GOALS & METHODOLOGY" data-time="01:20 - 02:10 (50s)">
+      <div class="slide-header">
+        <h2 class="slide-title">Objectives & Proposed Automated Testing Solution</h2>
+      </div>
+      <div class="grid-2x2">
+        <div class="aesthetic-card">
+          <div class="card-num"><span class="pill-tag slate" style="padding: 2px 8px;">01</span> TOPOLOGY</div>
+          <div class="card-title">Virtual Network Virtualization</div>
+          <div class="card-body">
+            Provision an isolated 4-node dual-path topology (Client, Primary Router, Backup Router, Destination Server) using native Linux Network Namespaces (<code>ip netns</code>) and Virtual Ethernet pairs (<code>veth</code>).
+          </div>
+        </div>
+
+        <div class="aesthetic-card">
+          <div class="card-num"><span class="pill-tag ochre" style="padding: 2px 8px;">02</span> TELEMETRY</div>
+          <div class="card-title">Continuous Probing & Failure Simulation</div>
+          <div class="card-body">
+            Execute continuous ICMP ping probes with sub-millisecond RTT parsing. Programmatically inject 5 distinct disruption profiles (Link Cut, Gateway Crash, Egress Down, Route Removal, Flapping).
+          </div>
+        </div>
+
+        <div class="aesthetic-card">
+          <div class="card-num"><span class="pill-tag terracotta" style="padding: 2px 8px;">03</span> FAILOVER</div>
+          <div class="card-title">Autonomous Multi-Metric Route Failover</div>
+          <div class="card-body">
+            Threshold-based detection (N=3 missed probes) triggers kernel route replacement promoting backup route metric from 200 to 50, followed by active reachability verification.
+          </div>
+        </div>
+
+        <div class="aesthetic-card">
+          <div class="card-num"><span class="pill-tag sage" style="padding: 2px 8px;">04</span> ANALYTICS</div>
+          <div class="card-title">Monotonic Metrics, WAL Database & Reporting</div>
+          <div class="card-body">
+            Measure detection and recovery durations using clock-drift-free monotonic timing (<code>time.monotonic()</code>). Commit telemetry to an SQLite WAL database and serve an interactive Flask dashboard.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- SLIDE 4: SYSTEM ARCHITECTURE -->
+    <!-- ========================================== -->
+    <div class="slide" id="slide-4" data-bg="cream" data-category="SYSTEM ARCHITECTURE & DESIGN" data-time="02:10 - 03:20 (70s)">
+      <div class="slide-header">
+        <h2 class="slide-title">Multi-Tiered System Architecture</h2>
+      </div>
+      <div class="grid-split">
+        <div class="img-frame" onclick="openLightbox('../architecture/system_architecture.png')">
+          <img src="../architecture/system_architecture.png" alt="System Architecture Diagram">
+        </div>
+        <div class="aesthetic-card">
+          <span class="pill-tag ochre" style="align-self: flex-start; margin-bottom: 14px;">4-TIER DESIGN</span>
+          <div class="card-title">Architectural Pillars</div>
+          <div class="card-body">
+            <ul>
+              <li><strong>Tier 1: Presentation</strong><br>HTML5, Bootstrap 5 & Chart.js live loss meters, latency gauges, and interactive route state badges.</li>
+              <li><strong>Tier 2: Application API</strong><br>Flask 3.0 REST backend dispatches failure events and coordinates session lifecycle.</li>
+              <li><strong>Tier 3: Testing Engine</strong><br>Multi-threaded controllers for probing, failure injection, failover & monotonic analysis.</li>
+              <li><strong>Tier 4: Kernel & DB</strong><br>Linux iproute2 subsystem + SQLite WAL database for high-concurrency logging.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- SLIDE 5: TOPOLOGY & WORKING -->
+    <!-- ========================================== -->
+    <div class="slide" id="slide-5" data-bg="cream" data-category="TOPOLOGY & FAILOVER DYNAMICS" data-time="03:20 - 04:40 (80s)">
+      <div class="slide-header">
+        <h2 class="slide-title">Virtual Network Topology & Multi-Metric Routing</h2>
+      </div>
+      <div class="grid-split">
+        <div class="img-frame" onclick="openLightbox('../architecture/network_topology.png')">
+          <img src="../architecture/network_topology.png" alt="Network Topology Diagram">
+        </div>
+        <div class="aesthetic-card">
+          <span class="pill-tag slate" style="align-self: flex-start; margin-bottom: 14px;">KERNEL ROUTING</span>
+          <div class="card-title">Routing Dynamics</div>
+          <div class="card-body">
+            <ul>
+              <li><strong>4 Isolated Namespaces:</strong><br><code>ns_client</code>, <code>ns_primary</code>, <code>ns_backup</code>, and <code>ns_server</code>.</li>
+              <li><strong>Steady-State Routing:</strong><br>Primary: metric 100 via 10.0.1.1<br>Backup: metric 200 via 10.0.2.1<br>Linux naturally prefers lowest metric (100).</li>
+              <li><strong>Failover State:</strong><br>On N=3 probe failures, Controller assigns metric 50 to backup route (50 &lt; 100).</li>
+              <li><strong>Verified Failback:</strong><br>Primary verified across 3 consecutive probes before reinstating metric 100.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- SLIDE 6: IMPLEMENTATION & TECH STACK -->
+    <!-- ========================================== -->
+    <div class="slide" id="slide-6" data-bg="cream" data-category="IMPLEMENTATION & CODEBASE" data-time="04:40 - 05:40 (60s)">
+      <div class="slide-header">
+        <h2 class="slide-title">Implementation Stack & Core Engineering Decisions</h2>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 18px; flex: 1;">
+        <div class="grid-3" style="flex: 1.1;">
+          <div class="aesthetic-card">
+            <span class="pill-tag slate" style="align-self: flex-start; margin-bottom: 10px;">DATA PLANE</span>
+            <div class="card-title">Linux Kernel & iproute2</div>
+            <div class="card-body" style="font-size: 13.5px;">
+              <ul>
+                <li>Network Namespaces (<code>netns</code>)</li>
+                <li>Virtual Ethernet link pairs (<code>veth</code>)</li>
+                <li>Sysctl IP forwarding enabled</li>
+                <li>Raw ICMP ping & route cache flush</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="aesthetic-card">
+            <span class="pill-tag ochre" style="align-self: flex-start; margin-bottom: 10px;">CONTROL PLANE</span>
+            <div class="card-title">Python 3 Core Engine</div>
+            <div class="card-body" style="font-size: 13.5px;">
+              <ul>
+                <li>Thread-safe daemon monitor (<code>threading.Lock</code>)</li>
+                <li>Clock-drift-free monotonic timers</li>
+                <li>Subprocess execution with WSL wrapper</li>
+                <li>Real-time regex RTT stream parser</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="aesthetic-card">
+            <span class="pill-tag sage" style="align-self: flex-start; margin-bottom: 10px;">STORAGE TIER</span>
+            <div class="card-title">Database & Persistence</div>
+            <div class="card-body" style="font-size: 13.5px;">
+              <ul>
+                <li>SQLite 3 in Write-Ahead Logging (WAL)</li>
+                <li>Synchronous NORMAL mode for 0 lock-wait</li>
+                <li>4 relational audit tables</li>
+                <li>Zero external database footprint</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="aesthetic-card" style="padding: 20px 28px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span class="card-title" style="margin-bottom: 0;">Flask Web Architecture & Pandas Analytics Engine</span>
+            <span class="pill-tag ochre">PRESENTATION & REPORTING</span>
+          </div>
+          <div class="card-body" style="font-size: 13.5px; line-height: 1.6;">
+            RESTful APIs for session lifecycle and manual route injection; Bootstrap 5 & Chart.js live loss meters; Pandas summary analytics generating downloadable CSV experiment matrices.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- SLIDE 7: 6 EXPERIMENTAL SCENARIOS -->
+    <!-- ========================================== -->
+    <div class="slide" id="slide-7" data-bg="cream" data-category="EXPERIMENTAL METHODOLOGY" data-time="05:40 - 06:50 (70s)">
+      <div class="slide-header">
+        <h2 class="slide-title">Comprehensive Testing & Failure Scenarios</h2>
+      </div>
+      <div class="grid-6">
+        <div class="aesthetic-card" style="padding: 18px 22px;">
+          <span class="pill-tag sage" style="font-size: 8.5px; margin-bottom: 8px; align-self: flex-start;">EXP-01: BASELINE</span>
+          <div class="card-title" style="font-size: 14.5px;">Normal Operation</div>
+          <div class="card-body" style="font-size: 12.5px;">
+            Baseline reachability to 10.50.0.1 via primary router with 0% packet loss and 0.032 ms RTT.
+          </div>
+        </div>
+
+        <div class="aesthetic-card" style="padding: 18px 22px;">
+          <span class="pill-tag terracotta" style="font-size: 8.5px; margin-bottom: 8px; align-self: flex-start;">EXP-02: PHYSICAL CUT</span>
+          <div class="card-title" style="font-size: 14.5px;">Primary Link Cut</div>
+          <div class="card-body" style="font-size: 12.5px;">
+            Shuts down <code>veth_p_c</code>. Simulates cable severing; validates threshold detection and route promotion.
+          </div>
+        </div>
+
+        <div class="aesthetic-card" style="padding: 18px 22px;">
+          <span class="pill-tag ochre" style="font-size: 8.5px; margin-bottom: 8px; align-self: flex-start;">EXP-03: SILENT BLACKHOLE</span>
+          <div class="card-title" style="font-size: 14.5px;">Gateway Silent Crash</div>
+          <div class="card-body" style="font-size: 12.5px;">
+            Disables IP forwarding (<code>ip_forward=0</code>). Link remains UP while traffic is silently dropped.
+          </div>
+        </div>
+
+        <div class="aesthetic-card" style="padding: 18px 22px;">
+          <span class="pill-tag terracotta" style="font-size: 8.5px; margin-bottom: 8px; align-self: flex-start;">EXP-04: EGRESS CUT</span>
+          <div class="card-title" style="font-size: 14.5px;">Interface Shutdown</div>
+          <div class="card-body" style="font-size: 12.5px;">
+            Disables router egress interface (<code>veth_p_s</code>). Simulates upstream provider disconnect.
+          </div>
+        </div>
+
+        <div class="aesthetic-card" style="padding: 18px 22px;">
+          <span class="pill-tag sage" style="font-size: 8.5px; margin-bottom: 8px; align-self: flex-start;">EXP-05: HYSTERESIS</span>
+          <div class="card-title" style="font-size: 14.5px;">Path Restoration & Failback</div>
+          <div class="card-body" style="font-size: 12.5px;">
+            Primary verified across 3 consecutive probes before executing sub-25 ms failback.
+          </div>
+        </div>
+
+        <div class="aesthetic-card" style="padding: 18px 22px;">
+          <span class="pill-tag slate" style="font-size: 8.5px; margin-bottom: 8px; align-self: flex-start;">EXP-06: JITTER</span>
+          <div class="card-title" style="font-size: 14.5px;">Repeated Cycles Testing</div>
+          <div class="card-body" style="font-size: 12.5px;">
+            3 consecutive failure-failover cycles prove zero route flapping and &lt; 5 ms recovery variance.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- SLIDE 8: RESULTS & PERFORMANCE ANALYSIS -->
+    <!-- ========================================== -->
+    <div class="slide" id="slide-8" data-bg="cream" data-category="EMPIRICAL EVALUATION & METRICS" data-time="06:50 - 08:30 (100s)">
+      <div class="slide-header">
+        <h2 class="slide-title">Experimental Results & Recovery Performance Analysis</h2>
+      </div>
+      <div style="display: flex; flex-direction: column; flex: 1;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; flex: 1.3;">
+          <div class="img-frame" onclick="openLightbox('../architecture/experiment_recovery_chart.png')">
+            <img src="../architecture/experiment_recovery_chart.png" alt="Recovery Time Breakdown">
+          </div>
+          <div class="img-frame" onclick="openLightbox('../architecture/repeated_cycles_chart.png')">
+            <img src="../architecture/repeated_cycles_chart.png" alt="Repeated Cycles Consistency">
+          </div>
+        </div>
+
+        <div class="stats-row">
+          <div class="stat-card">
+            <div class="stat-label">AVG DETECTION TIME</div>
+            <div class="stat-val" style="color: var(--accent-ochre);">3,441 ms</div>
+            <div class="stat-sub">N=3 missed probes (85% of outage)</div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-label">ROUTE SWITCHOVER</div>
+            <div class="stat-val" style="color: var(--accent-terracotta);">34.10 ms</div>
+            <div class="stat-sub">Kernel route metric promotion</div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-label">FAILBACK DURATION</div>
+            <div class="stat-val" style="color: var(--accent-sage);">23.50 ms</div>
+            <div class="stat-sub">Verified after 3 stable probes</div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-label">FAILOVER SUCCESS</div>
+            <div class="stat-val" style="color: var(--accent-slate);">100.0 %</div>
+            <div class="stat-sub">Across all 32 evaluated sessions</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- SLIDE 9: CONCLUSION & FUTURE SCOPE -->
+    <!-- ========================================== -->
+    <div class="slide" id="slide-9" data-bg="cream" data-category="SUMMARY & FUTURE SCOPE" data-time="08:30 - 09:20 (50s)">
+      <div class="slide-header">
+        <h2 class="slide-title">Conclusion & Future Research Directions</h2>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 28px; flex: 1;">
+        <div class="aesthetic-card">
+          <span class="pill-tag sage" style="align-self: flex-start; margin-bottom: 14px;">ACHIEVEMENTS</span>
+          <div class="card-title">Key Project Achievements</div>
+          <div class="card-body">
+            <ul>
+              <li><strong>Authentic OS Networking:</strong> Linux Namespaces provide an authentic, cost-free testbed using real kernel routing tables without physical hardware.</li>
+              <li><strong>Autonomous Multi-Metric Routing:</strong> Seamless failover via metric 50 overriding without restarting network daemons or dropping standby routes.</li>
+              <li><strong>Clock-Drift Immunity:</strong> Monotonic timestamps eliminate measurement skew caused by NTP adjustments.</li>
+              <li><strong>Hysteresis Stability:</strong> 3-probe stability verification eliminates route flapping during intermittent link states.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="aesthetic-card">
+          <span class="pill-tag slate" style="align-self: flex-start; margin-bottom: 14px;">RESEARCH HORIZONS</span>
+          <div class="card-title">Future Scope & Enhancements</div>
+          <div class="card-body">
+            <ul>
+              <li><strong>Sub-Millisecond BFD Integration:</strong> Incorporate Bidirectional Forwarding Detection (RFC 5880) to reduce failure detection below 100 ms.</li>
+              <li><strong>eBPF / XDP Data-Plane Acceleration:</strong> Implement eBPF kernel packet steering for microsecond route diversion directly at the NIC driver layer.</li>
+              <li><strong>Multi-Host VXLAN Topologies:</strong> Extend namespace routing across physical servers using VXLAN/Geneve tunneling for multi-node cloud clusters.</li>
+              <li><strong>Dynamic Traffic Ingestion:</strong> Benchmark failover under saturated 10 Gbps TCP/UDP throughput using iperf3 or TRex.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- SLIDE 10: THANK YOU / Q&A (Minimal Dark Glassmorphism) -->
+    <!-- ========================================== -->
+    <div class="slide" id="slide-10" data-bg="dark" data-category="QUESTIONS & DISCUSSION" data-time="09:20 - 10:00 (40s)">
+      <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 40px;">
+        <span class="pill-tag dark" style="margin-bottom: 24px; color: var(--accent-ochre);">QUESTIONS & TECHNICAL DISCUSSION</span>
+        <h1 style="font-family: var(--font-display); font-size: 60px; font-weight: 500; color: var(--text-light); margin-bottom: 16px;">
+          Thank You
+        </h1>
+        <p style="font-size: 19px; color: var(--accent-ochre); margin-bottom: 24px; font-weight: 500;">
+          Automated Network Failover and Recovery Testing Framework
+        </p>
+        <p style="font-size: 16px; color: var(--text-light-muted); max-width: 640px; line-height: 1.6; margin-bottom: 36px;">
+          The floor is now open for evaluation committee questions, observations, and technical discussions.
+        </p>
+        <div style="display: flex; gap: 14px;">
+          <button class="btn-icon dark" onclick="goToSlide(0)"><span>↺ Restart Presentation</span></button>
+          <button class="btn-icon dark" onclick="toggleNotes()"><span>Show Speaker Notes</span></button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- BOTTOM FROSTED GLASS CONTROL BAR -->
+  <div class="bottom-bar">
+    <div class="nav-btn-group">
+      <button class="nav-btn" id="prev-btn" onclick="prevSlide()">← Previous</button>
+      <button class="nav-btn" id="next-btn" onclick="nextSlide()">Next →</button>
+    </div>
+
+    <div class="progress-track">
+      <div class="progress-fill" id="progress-fill"></div>
+    </div>
+  </div>
+
+  <!-- FROSTED GLASS PRESENTER NOTES DRAWER -->
+  <div id="notes-drawer">
+    <div class="notes-header">
+      <div>
+        <span style="font-weight: 600; font-size: 14.5px; color: var(--text-light);">Presenter Notes</span>
+        <span class="notes-meta" id="notes-meta" style="margin-left: 14px;">Slide 01: Title (00:00 - 00:30)</span>
+      </div>
+      <button class="notes-close" onclick="toggleNotes()">Close (Esc)</button>
+    </div>
+    <div class="notes-body" id="notes-content">
+      Loading notes...
+    </div>
+  </div>
+
+</div>
+
+<!-- SLIDE OVERVIEW MODAL -->
+<div id="overview-modal" onclick="closeOverview(event)">
+  <div style="display: flex; justify-content: space-between; align-items: center; max-width: 1400px; margin: 0 auto; width: 100%;">
+    <h2 style="font-family: var(--font-display); font-size: 28px; color: var(--text-light);">Presentation Slide Overview</h2>
+    <button class="btn-icon dark" onclick="toggleOverview()">Close (Esc)</button>
+  </div>
+  <div class="overview-grid" id="overview-grid" style="max-width: 1400px; margin: 24px auto 0; width: 100%;">
+    <!-- Generated by JS -->
+  </div>
+</div>
+
+<!-- LIGHTBOX MODAL FOR HIGH-RES DIAGRAMS -->
+<div id="lightbox-modal" onclick="closeLightbox()">
+  <img id="lightbox-img" src="" alt="High resolution diagram">
+</div>
+
+<!-- ========================================== -->
+<!-- INTERACTIVE DECK JAVASCRIPT ENGINE -->
+<!-- ========================================== -->
+<script>
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const totalSlides = slides.length;
+  let currentSlide = 0;
+
+  // Speaker notes dictionary matching exact academic script
+  const speakerNotes = [
+    {
+      timing: "00:00 - 00:30 (30 seconds)",
+      cues: "Presentation title, author credentials, project scope, academic context.",
+      script: "Good morning, esteemed members of the evaluation committee and faculty members. Today, I am honored to present our project: 'Automated Network Failover and Recovery Testing Framework'. In modern cloud data centers and enterprise backbones, network availability is mission critical. Our work addresses how to simulate complex network failures, automate route failover, and measure recovery performance with empirical accuracy using native Linux kernel virtualization. Let us begin by examining the core problem we set out to solve."
+    },
+    {
+      timing: "00:30 - 01:20 (50 seconds)",
+      cues: "3 Cards: Outages Cause Costly Disruptions; Traditional Testing Limitations; Need for Closed-Loop Validation.",
+      script: "To understand our motivation, consider what happens when a network link fails. In production environments, a five-second outage can cause millions in lost transactions or trigger distributed database split-brain conditions. Yet testing failover remains a major operational dilemma. Testing on live infrastructure is far too risky. Physical laboratories are cost-prohibitive, and simulators like Packet Tracer do not execute the real Linux network stack. There is an acute need for a platform that uses the real operating system kernel to inject failures, execute automatic failover, and measure exact recovery durations without expensive hardware. This leads directly to our objectives."
+    },
+    {
+      timing: "01:20 - 02:10 (50 seconds)",
+      cues: "4 Solution Pillars: Virtualization, Probing/Disruption, Autonomous Failover, Monotonic Logging.",
+      script: "To solve these challenges, we established four clear engineering objectives: First, we use Linux Network Namespaces to create an isolated software-defined dual-path topology. Second, we implement a background packet monitor that probes reachability at five Hertz and an automated failure engine. Third, we build a failover controller that promotes backup route priority in the kernel routing table via metric override, paired with a hysteresis failback mechanism. Fourth, we measure all durations with monotonic clocks to eliminate clock drift, store all data in an SQLite database, and visualize live telemetry on a web dashboard. Now, let us examine the system architecture that ties this together."
+    },
+    {
+      timing: "02:10 - 03:20 (70 seconds)",
+      cues: "Tier 1 (Presentation), Tier 2 (Application), Tier 3 (Engine), Tier 4 (Virtualization & DB).",
+      script: "Here we see the complete system architecture, structured into four clean tiers. At the top is our Presentation Tier: an interactive web dashboard built with Bootstrap 5 and Chart.js, which streams telemetry directly from the backend. Below it is the Application Tier, a Flask REST API that coordinates experiment sessions and event dispatching. The heart of the system is Tier 3: the Core Network Testing Engine. It consists of the Topology Manager, the Packet Monitor running in a dedicated thread, the Failure Simulation Engine, the Failover Controller, and the Recovery Analyzer. Finally, Tier 4 interfaces directly with the Linux kernel networking subsystem using iproute2 and persists every measurement into an SQLite database using Write-Ahead Logging for maximum concurrency. Let us look closely at how the virtual network topology is structured."
+    },
+    {
+      timing: "03:20 - 04:40 (80 seconds)",
+      cues: "Dual-Path Virtual Topology: ns_client, ns_primary, ns_backup, ns_server, veth pairs, metrics 100/200/50.",
+      script: "This slide illustrates our dual-path virtual topology. We create four independent network namespaces: ns_client, ns_primary, ns_backup, and ns_server. Each node has its own virtual interfaces, IP addresses, and routing tables. The destination target service is 10.50.0.1, bound to the server's loopback interface. In normal operation, the client has two static routes to the destination: one through the primary router with metric 100, and one through the backup router with metric 200. Because Linux prefers the route with the lowest metric, all traffic travels through the primary path. When a failure occurs—such as disabling the primary router or link—our probing engine detects it after three missed pings. The controller immediately executes 'ip route replace', giving the backup route a promoted metric of 50. Because 50 is lower than 100, the Linux kernel instantaneously redirects outgoing packets to the backup path. Once the primary link recovers and proves stable over three consecutive probes, the controller restores metric 100 without route flapping."
+    },
+    {
+      timing: "04:40 - 05:40 (60 seconds)",
+      cues: "Linux iproute2, Python 3 Multi-threading, SQLite WAL, Flask, Bootstrap 5, Pandas.",
+      script: "Let us examine the technology stack and core implementation decisions. We chose Python 3 and native Linux iproute2 utilities. A critical engineering decision was migrating duration measurements to monotonic clocks. Unlike standard wall-clock time, which can drift or jump during NTP synchronizations, Python's time.monotonic() guarantees nanosecond precision intervals. For telemetry storage, we selected SQLite configured in WAL mode. This allows our high-frequency packet monitor thread to write probe records continuously while the Flask web server simultaneously reads and renders live charts without database locks. On the presentation side, we use Flask, Bootstrap 5, and Chart.js, paired with Pandas for multi-scenario aggregation."
+    },
+    {
+      timing: "05:40 - 06:50 (70 seconds)",
+      cues: "6 Evaluated Experiments: Normal, Link Cut, Gateway Crash, Egress Down, Failback, Repeated Cycles.",
+      script: "To rigorously validate the framework, we executed six comprehensive test scenarios. Experiment 1 establishes our healthy baseline. Experiment 2 tests physical cable disconnection by disabling the client-router veth interface. Experiment 3 simulates a silent gateway crash by disabling IP forwarding inside the primary router namespace. This is particularly challenging because the Ethernet link remains electrically UP, creating a silent blackhole. Experiment 4 tests an egress interface shutdown between the router and server. Experiment 5 evaluates primary path restoration and failback with stability verification. Finally, Experiment 6 runs three consecutive failure and recovery cycles to ensure the routing table does not suffer from stale states or memory leaks. Let us examine the actual experimental results from these tests."
+    },
+    {
+      timing: "06:50 - 08:30 (100 seconds)",
+      cues: "Empirical Charts: Detection vs Recovery; Repeated Cycles Stability; 32 Sessions Summary.",
+      script: "Here are our actual empirical measurements collected across 32 recorded sessions in our SQLite database. Looking at the left chart, we see Failure Detection Time compared to Total Recovery Time across different failure scenarios. A critical finding emerges: Failure Detection Time accounts for 85% of total recovery duration! Because our detection threshold requires three consecutive missed probes, detection takes between 1.8 and 4.2 seconds. However, once failure is declared, the kernel route switchover itself executes in just 15 to 40 milliseconds. The right chart displays our repeated failure cycles test. Notice the remarkable consistency across all three cycles: detection times hover tightly around 4.1 seconds, recovery around 4.7 seconds, and failback completes in an astonishing 21 to 25 milliseconds. Overall, our failover success rate was 100%, and baseline round-trip latency remained under 0.04 milliseconds."
+    },
+    {
+      timing: "08:30 - 09:20 (50 seconds)",
+      cues: "Achievements: Real OS stack, Monotonic accuracy, 100% success rate, Future BFD & eBPF.",
+      script: "In conclusion, this project demonstrates that software-defined network namespaces provide an authentic, reproducible, and zero-cost platform for evaluating network resilience. We achieved all our project objectives: autonomous failover was 100% successful, failback restored primary preference in under 25 milliseconds, and our monotonic timing architecture guarantees measurement integrity. Looking forward, exciting opportunities exist to integrate sub-millisecond Bidirectional Forwarding Detection (BFD) and eBPF data-plane packet steering to push failover times into the sub-50 millisecond regime. Now, I would be delighted to welcome your questions."
+    },
+    {
+      timing: "09:20 - 10:00 (40 seconds)",
+      cues: "Closing title, candidate contact, floor open for questions.",
+      script: "Thank you very much for your time and kind attention. I now open the floor to the evaluation committee for any questions, comments, or technical discussions."
+    }
+  ];
+
+  function updateSlide(newIndex) {
+    if (newIndex < 0) newIndex = 0;
+    if (newIndex >= totalSlides) newIndex = totalSlides - 1;
+
+    slides[currentSlide].classList.remove('active');
+    currentSlide = newIndex;
+    slides[currentSlide].classList.add('active');
+
+    const slideEl = slides[currentSlide];
+    const isDark = slideEl.dataset.bg === 'dark';
+
+    // Toggle body theme
+    if (isDark) {
+      document.body.classList.add('dark-theme');
+    } else {
+      document.body.classList.remove('dark-theme');
+    }
+
+    // Update Counter & Category
+    document.getElementById('slide-counter').textContent = `${String(currentSlide + 1).padStart(2, '0')} / ${String(totalSlides).padStart(2, '0')}`;
+    const category = slideEl.dataset.category || "";
+    const catBadge = document.getElementById('category-badge');
+    if (category) {
+      catBadge.textContent = category;
+      catBadge.style.display = 'inline-flex';
+    } else {
+      catBadge.style.display = 'none';
+    }
+    
+    // Update theme classes on UI buttons & tags
+    const elementsToTheme = [
+      document.getElementById('category-badge'),
+      document.getElementById('slide-counter'),
+      document.getElementById('timer-btn'),
+      document.getElementById('btn-notes'),
+      document.getElementById('btn-overview'),
+      document.getElementById('btn-fullscreen')
+    ];
+
+    elementsToTheme.forEach(el => {
+      if (el) {
+        if (isDark) el.classList.add('dark');
+        else el.classList.remove('dark');
+      }
+    });
+
+    // Update Progress Bar
+    const pct = ((currentSlide + 1) / totalSlides) * 100;
+    document.getElementById('progress-fill').style.width = `${pct}%`;
+
+    // Update Speaker Notes Drawer Content
+    const note = speakerNotes[currentSlide];
+    document.getElementById('notes-meta').textContent = `Slide ${(currentSlide + 1).toString().padStart(2, '0')}: ${slideEl.querySelector('.slide-title')?.textContent || 'Title Slide'} (${note.timing})`;
+    document.getElementById('notes-content').innerHTML = `
+      <div style="margin-bottom: 8px; font-family: var(--font-mono); font-size: 11.5px; color: var(--accent-ochre);">
+        <strong>Visual Focus:</strong> ${note.cues}
+      </div>
+      <div><strong>Speech Script:</strong> "${note.script}"</div>
+    `;
+
+    // Update active state in overview grid if open
+    document.querySelectorAll('.thumb-card').forEach((card, idx) => {
+      if (idx === currentSlide) card.classList.add('active');
+      else card.classList.remove('active');
+    });
+  }
+
+  function nextSlide() { updateSlide(currentSlide + 1); }
+  function prevSlide() { updateSlide(currentSlide - 1); }
+  function goToSlide(index) { updateSlide(index); closeOverview(); }
+
+  // Keyboard navigation
+  window.addEventListener('keydown', (e) => {
+    if (document.getElementById('lightbox-modal').classList.contains('open')) {
+      if (e.key === 'Escape') closeLightbox();
+      return;
+    }
+    if (document.getElementById('overview-modal').classList.contains('open')) {
+      if (e.key === 'Escape') closeOverview();
+      return;
+    }
+
+    switch(e.key) {
+      case 'ArrowRight':
+      case 'Space':
+      case 'PageDown':
+        e.preventDefault();
+        nextSlide();
+        break;
+      case 'ArrowLeft':
+      case 'PageUp':
+        e.preventDefault();
+        prevSlide();
+        break;
+      case 'Home':
+        e.preventDefault();
+        goToSlide(0);
+        break;
+      case 'End':
+        e.preventDefault();
+        goToSlide(totalSlides - 1);
+        break;
+      case 'f':
+      case 'F':
+        toggleFullscreen();
+        break;
+      case 'n':
+      case 'N':
+        toggleNotes();
+        break;
+      case 'o':
+      case 'O':
+        toggleOverview();
+        break;
+      case 't':
+      case 'T':
+        toggleTimer();
+        break;
+      case 'Escape':
+        document.getElementById('notes-drawer').classList.remove('open');
+        break;
+    }
+  });
+
+  // Fullscreen Toggle
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(err => console.log(err));
+    } else {
+      if (document.exitFullscreen) document.exitFullscreen();
+    }
+  }
+
+  // Speaker Notes Toggle
+  function toggleNotes() {
+    const drawer = document.getElementById('notes-drawer');
+    drawer.classList.toggle('open');
+  }
+
+  // Overview Modal
+  function buildOverview() {
+    const grid = document.getElementById('overview-grid');
+    grid.innerHTML = '';
+    slides.forEach((s, idx) => {
+      const title = s.querySelector('.slide-title')?.textContent || s.querySelector('h1')?.textContent || `Slide ${idx+1}`;
+      const thumb = document.createElement('div');
+      thumb.className = `thumb-card ${idx === currentSlide ? 'active' : ''}`;
+      thumb.onclick = () => goToSlide(idx);
+      thumb.innerHTML = `
+        <div class="thumb-num">SLIDE ${String(idx + 1).padStart(2, '0')}</div>
+        <div class="thumb-title">${title}</div>
+        <div style="font-size: 10px; color: #888;">${speakerNotes[idx].timing}</div>
+      `;
+      grid.appendChild(thumb);
+    });
+  }
+
+  function toggleOverview() {
+    const modal = document.getElementById('overview-modal');
+    modal.classList.toggle('open');
+    if (modal.classList.contains('open')) buildOverview();
+  }
+
+  function closeOverview(e) {
+    if (!e || e.target.id === 'overview-modal') {
+      document.getElementById('overview-modal').classList.remove('open');
+    }
+  }
+
+  // Lightbox for Diagrams
+  function openLightbox(src) {
+    document.getElementById('lightbox-img').src = src;
+    document.getElementById('lightbox-modal').classList.add('open');
+  }
+
+  function closeLightbox() {
+    document.getElementById('lightbox-modal').classList.remove('open');
+  }
+
+  // 10-Minute Presentation Countdown Timer
+  let timerSeconds = 600; // 10 minutes
+  let timerInterval = null;
+  let timerRunning = false;
+
+  function formatTime(s) {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  }
+
+  function toggleTimer() {
+    const dot = document.getElementById('timer-dot');
+    if (!timerRunning) {
+      timerRunning = true;
+      dot.style.background = '#BC5A36';
+      dot.style.boxShadow = '0 0 10px rgba(188, 90, 54, 0.8)';
+      timerInterval = setInterval(() => {
+        if (timerSeconds > 0) {
+          timerSeconds--;
+          document.getElementById('timer-display').textContent = formatTime(timerSeconds);
+        } else {
+          clearInterval(timerInterval);
+          dot.style.background = '#DC2626';
+        }
+      }, 1000);
+    } else {
+      timerRunning = false;
+      clearInterval(timerInterval);
+      dot.style.background = '#4D6D53';
+      dot.style.boxShadow = '0 0 8px rgba(77, 109, 83, 0.6)';
+    }
+  }
+
+  // Event Listeners for Buttons
+  document.getElementById('timer-btn').addEventListener('click', toggleTimer);
+  document.getElementById('btn-notes').addEventListener('click', toggleNotes);
+  document.getElementById('btn-overview').addEventListener('click', toggleOverview);
+  document.getElementById('btn-fullscreen').addEventListener('click', toggleFullscreen);
+
+  // Initialize
+  updateSlide(0);
+</script>
+
+</body>
+</html>

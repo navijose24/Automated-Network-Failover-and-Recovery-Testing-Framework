@@ -14,7 +14,9 @@ class FailureEngine:
     def __init__(self):
         self.active_scenario: Optional[str] = None
         self.failure_start_time: Optional[float] = None
+        self.failure_start_mono: Optional[float] = None
         self.failure_end_time: Optional[float] = None
+        self.failure_end_mono: Optional[float] = None
         self.duration_seconds: float = 0.0
         self.is_active = False
         
@@ -53,10 +55,13 @@ class FailureEngine:
                 }
 
             start_t = time.time()
+            start_mono = time.monotonic()
             self.is_active = True
             self.active_scenario = scenario_id
             self.failure_start_time = start_t
+            self.failure_start_mono = start_mono
             self.failure_end_time = None
+            self.failure_end_mono = None
             self.duration_seconds = duration_seconds
 
             event_data = {
@@ -100,14 +105,17 @@ class FailureEngine:
             scenario_id = self.active_scenario
             success = restore_failure(scenario_id)
             end_t = time.time()
+            end_mono = time.monotonic()
             self.failure_end_time = end_t
+            self.failure_end_mono = end_mono
             self.is_active = False
             self.active_scenario = None
 
+            elapsed = max(0.0, round(end_mono - (self.failure_start_mono or end_mono), 3))
             event_data = {
                 "scenario_id": scenario_id,
                 "end_time": end_t,
-                "elapsed_seconds": round(end_t - (self.failure_start_time or end_t), 3)
+                "elapsed_seconds": elapsed
             }
 
         # Dispatch FAILURE_RESTORED

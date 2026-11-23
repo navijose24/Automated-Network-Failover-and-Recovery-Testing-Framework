@@ -106,6 +106,7 @@ class FailbackController:
         """Restore primary route preference and demote backup route metric."""
         logger.info("Executing failback: restoring primary route preference...")
         t_start = time.time()
+        t_start_mono = time.monotonic()
         
         from network.routing import delete_route
         
@@ -142,8 +143,9 @@ class FailbackController:
         # 4. Verify destination reachability on primary
         verified = test_interface_probe(dev=IP_CONFIG["client_pri_dev"], target_ip=IP_CONFIG["target_ip"])
         t_end = time.time()
+        t_end_mono = time.monotonic()
         
-        duration_ms = round((t_end - t_start) * 1000, 2)
+        duration_ms = max(0.0, round((t_end_mono - t_start_mono) * 1000, 2))
         self.failback_time = t_end
         self.failback_duration_ms = duration_ms
         self.failback_completed = verified

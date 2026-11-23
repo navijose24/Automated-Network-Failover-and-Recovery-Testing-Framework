@@ -27,8 +27,11 @@ class FailoverController:
         self.in_failure = False
         self.failed_over = False
         self.failure_start_time: Optional[float] = None
+        self.failure_start_mono: Optional[float] = None
         self.detection_time: Optional[float] = None
+        self.detection_mono: Optional[float] = None
         self.restored_time: Optional[float] = None
+        self.restored_mono: Optional[float] = None
         
         self.active_path = "PRIMARY"
         self.last_failed_interface: Optional[str] = None
@@ -55,17 +58,20 @@ class FailoverController:
             except Exception as ex:
                 logger.error(f"Error in failover listener: {ex}")
 
-    def notify_failure_triggered(self, scenario_id: str, start_time: float, affected_dev: str):
+    def notify_failure_triggered(self, scenario_id: str, start_time: float, affected_dev: str, start_mono: Optional[float] = None):
         """Notified by FailureEngine when a scenario begins, establishing the ground-truth T0."""
         with self.lock:
             self.failure_start_time = start_time
+            self.failure_start_mono = start_mono or time.monotonic()
             self.active_scenario = scenario_id
             self.last_failed_interface = affected_dev
             self.consecutive_failures = 0
             self.in_failure = False
             self.failed_over = False
             self.detection_time = None
+            self.detection_mono = None
             self.restored_time = None
+            self.restored_mono = None
             self.detection_time_ms = None
             self.recovery_time_ms = None
             self.failover_success = False
@@ -81,6 +87,7 @@ class FailoverController:
                 # mark failure start at the first missed packet
                 if self.failure_start_time is None and self.consecutive_failures == 1:
                     self.failure_start_time = probe.timestamp
+                    self.failure_start_mono = time.monotonic()
 
                 # Check if threshold reached to confirm failure
                 if self.consecutive_failures >= self.failure_threshold and not self.in_failure and not self.failed_over:
@@ -97,11 +104,14 @@ class FailoverController:
     def _handle_failure_detected(self, probe: ProbeResult):
         """Threshold reached: declare failure and execute failover."""
         detect_t = time.time()
+        detect_mono = time.monotonic()
         self.in_failure = True
         self.detection_time = detect_t
+        self.detection_mono = detect_mono
         
-        t0 = self.failure_start_time or detect_t
-        self.detection_time_ms = round((detect_t - t0) * 1000, 2)
+        t0_mono = self.failure_start_mono or detect_mono
+        self.detection_time_ms = max(0.0, round((detect_mono - t0_mono) * 1000, 2))
+        t0_wall = self.failure_start_time or detect_t
         
         logger.warning(
             f"NETWORK FAILURE DETECTED after {self.consecutive_failures} consecutive missed probes. "
@@ -110,7 +120,7 @@ class FailoverController:
         
         detect_event = {
             "timestamp": detect_t,
-            "failure_start_time": t0,
+            "failure_start_time": t0_wall,
             "detection_time_ms": self.detection_time_ms,
             "scenario": self.active_scenario or "UNKNOWN",
             "failed_interface": self.last_failed_interface or probe.active_interface,
@@ -155,13 +165,15 @@ class FailoverController:
         
         if reachable:
             restored_t = time.time()
+            restored_mono = time.monotonic()
             self.failed_over = True
             self.active_path = "BACKUP"
             self.restored_time = restored_t
+            self.restored_mono = restored_mono
             self.failover_success = True
             
-            t0 = self.failure_start_time or self.detection_time or restored_t
-            self.recovery_time_ms = round((restored_t - t0) * 1000, 2)
+            t0_mono = self.failure_start_mono or self.detection_mono or restored_mono
+            self.recovery_time_ms = max(0.0, round((restored_mono - t0_mono) * 1000, 2))
             
             logger.info(
                 f"FAILOVER RESTORED via BACKUP! Recovery time: {self.recovery_time_ms} ms "
@@ -192,6 +204,7 @@ class FailoverController:
         """Manually trigger failover to backup route."""
         with self.lock:
             self.failure_start_time = time.time()
+            self.failure_start_mono = time.monotonic()
             ok = self._activate_failover()
             return {
                 "success": ok,
@@ -206,8 +219,11 @@ class FailoverController:
             self.in_failure = False
             self.failed_over = False
             self.failure_start_time = None
+            self.failure_start_mono = None
             self.detection_time = None
+            self.detection_mono = None
             self.restored_time = None
+            self.restored_mono = None
             self.detection_time_ms = None
             self.recovery_time_ms = None
             self.failover_success = False

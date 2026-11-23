@@ -266,8 +266,9 @@ def api_failure_trigger():
 
     # Notify failover controller of ground-truth start
     t0 = time.time()
+    t0_mono = time.monotonic()
     affected = SCENARIOS[scenario_id]["affected_component"]
-    failover_ctrl.notify_failure_triggered(scenario_id, t0, affected)
+    failover_ctrl.notify_failure_triggered(scenario_id, t0, affected, start_mono=t0_mono)
 
     result = failure_engine.trigger_failure(scenario_id, duration_seconds=duration)
     return jsonify(result)
